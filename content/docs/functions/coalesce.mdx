@@ -1,0 +1,53 @@
+---
+title: COALESCE
+description: Return the first non-NULL value from a list of expressions.
+---
+
+## Syntax
+
+```sql
+COALESCE(value1, value2, ..., valueN)
+```
+
+## What it does
+
+`COALESCE()` walks the arguments left to right and returns the first value that is not `NULL`.
+
+If every argument is `NULL`, the result is `NULL`.
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  COALESCE(phone_home, phone_mobile, 'Unknown') AS best_phone
+FROM customers;
+```
+
+## Common use cases
+
+- fill missing values with a fallback
+- normalize nullable fields for reporting
+- avoid `NULL` leakage into aggregate or display logic
+
+## Null semantics
+
+This is one of the most important SQL patterns to use carefully:
+
+```sql
+COALESCE(NULL, NULL, 'fallback') = 'fallback'
+```
+
+Whereas:
+
+```sql
+NULL = NULL
+```
+
+is never true in standard SQL predicate evaluation.
+
+## Safety check before shipping
+
+- confirm the fallback value is appropriate for reporting or business logic
+- verify downstream logic treats the fallback as intended
+- check for nullable columns that should stay nullable rather than be normalized

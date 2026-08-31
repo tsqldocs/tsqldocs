@@ -1,0 +1,40 @@
+---
+title: Running total
+description: Use a window aggregate to keep row-granularity while calculating cumulative values.
+---
+
+## Example
+
+```sql
+SELECT
+  month,
+  revenue,
+  SUM(revenue) OVER (
+    ORDER BY month
+  ) AS running_total
+FROM monthly_revenue;
+```
+
+## What this does
+
+The `SUM` is evaluated as a window over the ordered rows, so each row keeps its own identity while also showing the cumulative total up to that point.
+
+## Common pattern
+
+```sql
+SELECT
+  customer_id,
+  order_date,
+  amount,
+  SUM(amount) OVER (
+    PARTITION BY customer_id
+    ORDER BY order_date
+  ) AS running_customer_total
+FROM orders;
+```
+
+## Safety check before shipping
+
+- confirm the ordering is intentional and stable
+- decide whether a partition is desired
+- check whether the cumulative total should reset per group or continue across the full set

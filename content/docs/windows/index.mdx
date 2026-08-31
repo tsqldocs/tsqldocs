@@ -1,0 +1,34 @@
+---
+title: Window functions
+description: Rank, aggregate, and compare rows within partitions while preserving row-level detail.
+---
+
+## Window essentials
+
+<Cards>
+  <Card title="ROW_NUMBER" description="Sequential numbering within a partition." href="/docs/functions/row_number" />
+  <Card title="RANK" description="Keep ties together and leave gaps." href="/docs/functions/rank" />
+  <Card title="SUM over window" description="Aggregate values across a partition while keeping row-level output." href="/docs/windows/running-total" />
+</Cards>
+
+## Core idea
+
+A window function computes a value over a set of rows related to the current row, without collapsing the result set like a normal aggregate.
+
+## Example
+
+```sql
+SELECT
+  month,
+  revenue,
+  SUM(revenue) OVER (
+    ORDER BY month
+  ) AS running_total
+FROM monthly_revenue;
+```
+
+## Common gotchas
+
+- `PARTITION BY` changes the group over which the calculation is evaluated
+- `ORDER BY` inside the window controls the sequence of the calculation
+- when ranking, ties and ordering matter a lot for reproducibility

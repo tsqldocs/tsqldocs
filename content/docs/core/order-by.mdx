@@ -1,0 +1,34 @@
+---
+title: ORDER BY
+description: Make result ordering deterministic and intentional.
+---
+
+## Syntax
+
+```sql
+ORDER BY column_name [ASC | DESC], secondary_column [ASC | DESC]
+```
+
+## Why it matters
+
+Without a unique tiebreaker, the order of rows that share the same value is not guaranteed. That can affect paging, ranking, and results that are later exported or compared.
+
+## Example
+
+```sql
+SELECT
+  product_id,
+  sales
+FROM product_sales
+ORDER BY sales DESC, product_id ASC;
+```
+
+## Good practice
+
+- add a stable tie-breaker such as a primary key or timestamp
+- document the business rule behind the order
+- be explicit when results are expected to be stable across runs
+
+## Safety check before shipping
+
+If the query is used for pagination or ranking, verify that the ordering is deterministic enough to support repeated results and audits.

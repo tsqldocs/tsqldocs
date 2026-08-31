@@ -1,0 +1,90 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+:root {
+  --fd-background: #f7f8fb;
+  --fd-card: rgba(255, 255, 255, 0.72);
+  --fd-foreground: #101828;
+  --fd-muted: #eef2f7;
+  --fd-primary: #2563eb;
+  --fd-primary-foreground: #eff6ff;
+  --fd-border: rgba(15, 23, 42, 0.08);
+  --fd-layout-width: 1400px;
+}
+
+html {
+  scrollbar-gutter: stable;
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8fafc 0%, #eef4ff 100%);
+}
+
+body {
+  background: transparent;
+  color: var(--fd-foreground);
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+#nd-subnav {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(18px);
+  border-color: var(--fd-border);
+}
+
+[data-fd-docs-layout] {
+  background: transparent;
+}
+
+[data-fd-docs-layout] > main,
+[data-fd-docs-layout] > div {
+  background: transparent;
+}
+
+.fumadocs-layout {
+  --fd-layout-width: 1500px;
+}
+
+html.dark {
+  --fd-background: #0a0f1a;
+  --fd-card: rgba(15, 23, 42, 0.7);
+  --fd-foreground: #ecf2ff;
+  --fd-muted: #111827;
+  --fd-primary: #60a5fa;
+  --fd-primary-foreground: #0f172a;
+  --fd-border: rgba(148, 163, 184, 0.2);
+}
+
+html.dark {
+  background:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.18), transparent 30%),
+    linear-gradient(180deg, #020817 0%, #0f172a 100%);
+}
+
+::selection {
+  background: rgba(96, 165, 250, 0.32);
+}
+
+button,
+a {
+  transition: all 180ms ease;
+}
+
+.prose {
+  max-width: 72ch;
+}
+
+.prose h1,
+.prose h2,
+.prose h3 {
+  letter-spacing: -0.04em;
+}
+
+.fumadocs-toc a,
+.fumadocs-sidebar a {
+  border-radius: 0.75rem;
+}

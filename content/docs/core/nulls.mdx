@@ -1,0 +1,38 @@
+---
+title: NULL handling
+description: Understand NULL semantics, comparisons, and safe SQL patterns.
+---
+
+## The core rule
+
+In SQL, `NULL` means “unknown,” not “empty string” and not “zero.” That means standard comparisons behave differently.
+
+```sql
+WHERE col = NULL
+```
+
+This is never true. Use `IS NULL` or `IS NOT NULL` instead.
+
+## Common patterns
+
+```sql
+SELECT
+  COALESCE(email, 'unknown@example.com') AS email,
+  CASE
+    WHEN score IS NULL THEN 0
+    ELSE score
+  END AS score
+FROM users;
+```
+
+## Why this matters
+
+- filters can silently exclude rows
+- aggregate logic can be surprising
+- reporting outputs can look inconsistent if nullable values are not normalized
+
+## Safety checklist
+
+- decide whether `NULL` should stay as `NULL`, or be replaced at the boundary
+- use `COALESCE` for display and fallback logic
+- use `IS NULL` / `IS NOT NULL` for predicate checks

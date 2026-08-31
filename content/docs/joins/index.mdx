@@ -1,0 +1,31 @@
+---
+title: Joins
+description: Join patterns, common mistakes, and ways to make relational queries predictable.
+---
+
+## Join types
+
+<Cards>
+  <Card title="INNER JOIN" description="Return rows that match in both tables." href="/docs/joins/inner-join" />
+  <Card title="LEFT JOIN" description="Keep all rows from the left table and match what exists on the right." href="/docs/joins/left-join" />
+  <Card title="FULL OUTER JOIN" description="Return unmatched rows from both sets." href="/docs/joins/full-outer-join" />
+</Cards>
+
+## Common issues
+
+- incorrect join keys produce duplicate rows
+- `LEFT JOIN` with filters in the `WHERE` clause can accidentally turn it into an inner join
+- missing `ON` conditions create ambiguous result sets
+
+## Example
+
+```sql
+SELECT
+  c.customer_id,
+  c.name,
+  o.order_id,
+  o.total_amount
+FROM customers c
+LEFT JOIN orders o
+  ON c.customer_id = o.customer_id;
+```

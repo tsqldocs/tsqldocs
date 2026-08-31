@@ -1,0 +1,20 @@
+---
+title: SQL functions
+description: Practical SQL function reference pages for the most-used patterns.
+---
+
+## Common building blocks
+
+<Cards>
+  <Card title="ROW_NUMBER" description="Assign a unique row number within each partition." href="/docs/functions/row_number" />
+  <Card title="RANK" description="Rank rows and keep ties together." href="/docs/functions/rank" />
+  <Card title="COALESCE" description="Return the first non-NULL value." href="/docs/functions/coalesce" />
+  <Card title="SUM" description="Aggregate values across a group." href="/docs/functions/sum" />
+</Cards>
+
+## Good habits
+
+- prefer explicit `ORDER BY` in window functions
+- use `PARTITION BY` for per-group ranking
+- guard nullable results with `COALESCE` or `CASE`
+- document tie policy when ranking and paging

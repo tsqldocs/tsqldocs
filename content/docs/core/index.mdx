@@ -1,0 +1,33 @@
+---
+title: Core SQL
+description: Build your SQL foundation with logic, ordering, and null semantics that matter in production.
+---
+
+## Foundations that trip people up
+
+These pages cover the semantics most likely to cause bad production queries:
+
+<Cards>
+  <Card title="NULL handling" description="What NULL means, how comparisons behave, and how COALESCE helps." href="/docs/core/nulls" />
+  <Card title="ORDER BY" description="How ordering works, why ties matter, and how to make output deterministic." href="/docs/core/order-by" />
+  <Card title="GROUP BY" description="When aggregates change the shape of your result set." href="/docs/core/group-by" />
+</Cards>
+
+## Keep this checklist close
+
+- `NULL` is not equal to anything
+- `ORDER BY` without a tiebreaker is not stable
+- `GROUP BY` changes the grain of the result
+- a query is only safe when the business rule is explicit
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  COALESCE(last_order_date, 'never') AS last_order_date,
+  COUNT(*) AS orders
+FROM orders
+GROUP BY customer_id, last_order_date
+ORDER BY customer_id;
+```

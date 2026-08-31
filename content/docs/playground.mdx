@@ -1,0 +1,42 @@
+---
+title: SQL playground
+description: Run SQL snippets against a lightweight local engine to test edge-case behavior.
+---
+
+## Playground status
+
+This feature is intentionally scoped to a reliable local execution model for experimentation, not a production-grade database emulator.
+
+## What it should help with
+
+- testing `NULL` handling
+- validating ranking and window logic
+- comparing `ORDER BY` behavior with and without tiebreakers
+- checking partition-by semantics in a controlled environment
+
+## Good test queries
+
+```sql
+SELECT 1 AS id, NULL AS value
+UNION ALL
+SELECT 2, 'abc';
+```
+
+```sql
+SELECT
+  customer_id,
+  ROW_NUMBER() OVER (
+    PARTITION BY customer_id
+    ORDER BY purchase_date DESC
+  ) AS rn
+FROM purchases;
+```
+
+## Shipping discipline
+
+Before shipping any SQL playground behavior, verify:
+
+- engines agree on `NULL` semantics
+- ranking ties are documented and stable
+- `PARTITION BY` logic is correct
+- output formatting is predictable and easy to audit

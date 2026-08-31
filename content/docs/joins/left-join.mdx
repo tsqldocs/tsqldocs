@@ -1,0 +1,50 @@
+---
+title: LEFT JOIN
+description: Preserve rows on the left and match records on the right when they exist.
+---
+
+## Syntax
+
+```sql
+SELECT ...
+FROM left_table lt
+LEFT JOIN right_table rt
+  ON lt.key = rt.key;
+```
+
+## What it does
+
+A `LEFT JOIN` keeps every row from the left table, even if there is no matching row on the right. Right-side columns will be `NULL` for unmatched rows.
+
+## Example
+
+```sql
+SELECT
+  c.customer_id,
+  c.name,
+  o.order_id,
+  o.total_amount
+FROM customers c
+LEFT JOIN orders o
+  ON c.customer_id = o.customer_id;
+```
+
+## Common mistake
+
+This is a classic bug:
+
+```sql
+SELECT *
+FROM customers c
+LEFT JOIN orders o
+  ON c.customer_id = o.customer_id
+WHERE o.customer_id IS NULL;
+```
+
+This filters to rows that had no match, which is valid when that is the intent. But if the requirement is to keep unmatched rows while also checking some order-level condition, the filter may need to move into the `ON` clause instead.
+
+## Safety check before shipping
+
+- confirm whether unmatched rows are expected
+- decide whether right-side `NULL`s are valid or should be coalesced
+- make sure the business rule is encoded in the join condition rather than accidentally in a `WHERE` clause

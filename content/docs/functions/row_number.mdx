@@ -1,0 +1,58 @@
+---
+title: ROW_NUMBER
+description: Assign a unique sequential number to each row within a partition.
+---
+
+## Syntax
+
+```sql
+ROW_NUMBER() OVER (
+  [PARTITION BY partition_expression, ...]
+  ORDER BY sort_expression [ASC | DESC], ...
+)
+```
+
+## What it does
+
+`ROW_NUMBER()` returns a unique integer for each row in the result set after ordering. It is commonly used for pagination, ranking, and selecting the first row per group.
+
+## Important behavior
+
+- It always returns a unique value per row within the partition.
+- If two rows tie on the `ORDER BY` values, the engine may still choose an arbitrary order unless you add a stable tiebreaker.
+- If you want deterministic results, add a unique secondary sort column.
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  order_date,
+  ROW_NUMBER() OVER (
+    PARTITION BY customer_id
+    ORDER BY order_date DESC, order_id DESC
+  ) AS row_num
+FROM orders;
+```
+
+## Common pitfalls
+
+### Ties are not guaranteed to be stable
+
+```sql
+SELECT
+  product_id,
+  ROW_NUMBER() OVER (
+    PARTITION BY category_id
+    ORDER BY sales DESC
+  ) AS rank_in_category
+FROM sales;
+```
+
+If multiple rows have the same sales value, the order between them is not guaranteed unless you add a secondary column.
+
+## Safety check before shipping
+
+- confirm the desired ordering is deterministic
+- confirm whether a partition is required
+- decide whether the result should be stable across repeated runs
