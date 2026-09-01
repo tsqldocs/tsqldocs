@@ -1,0 +1,42 @@
+---
+title: NTILE
+description: Split ordered rows into a fixed number of buckets for quartiles, deciles, and cohorts.
+---
+
+## Syntax
+
+```sql
+NTILE(bucket_count) OVER (
+  [PARTITION BY partition_expression, ...]
+  ORDER BY sort_expression [ASC | DESC], ...
+)
+```
+
+## What it does
+
+`NTILE(n)` distributes the ordered rows into `n` groups as evenly as possible and returns the bucket number (`1` to `n`) for each row. When the row count does not divide evenly, the earlier buckets get one extra row each.
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  lifetime_value,
+  NTILE(4) OVER (ORDER BY lifetime_value DESC) AS value_quartile
+FROM customer_totals;
+```
+
+Quartile `1` here is the highest-value 25% of customers.
+
+## Common pitfalls
+
+- `NTILE` splits by **row count**, not by value — two rows with the same value can land in different buckets
+- with fewer rows than buckets, some bucket numbers are never assigned and the last rows still get low numbers
+- changing the row set (a filter, a new day of data) reshuffles bucket boundaries, so buckets are not stable over time
+- if you need value-based thresholds (for example "spend over $1,000"), use `CASE`, not `NTILE`
+
+## Safety check before shipping
+
+- confirm you want equal-sized groups rather than fixed value cutoffs
+- decide how ties on the boundary should be handled, and add a tiebreaker to the `ORDER BY`
+- document that bucket membership changes when the underlying data changes

@@ -1,0 +1,44 @@
+---
+title: FULL OUTER JOIN
+description: Return all rows from both tables, including unmatched rows from either side.
+---
+
+## Syntax
+
+```sql
+SELECT *
+FROM left_table lt
+FULL OUTER JOIN right_table rt
+  ON lt.key = rt.key;
+```
+
+## What it does
+
+A `FULL OUTER JOIN` preserves all rows from both tables and fills missing values with `NULL` where there is no match.
+
+## Example
+
+```sql
+SELECT
+  c.customer_id,
+  c.name,
+  o.order_id,
+  o.total_amount
+FROM customers c
+FULL OUTER JOIN orders o
+  ON c.customer_id = o.customer_id;
+```
+
+## When to use it
+
+This is useful when you need a complete diff of both sets, such as reconciling data between systems or reviewing unmatched records from either side.
+
+## Common risk
+
+It is easy to overread the output because the result can be much larger than a simple `LEFT JOIN` or `INNER JOIN`.
+
+## Safety check before shipping
+
+- confirm the business rule actually requires unmatched rows from both sides
+- inspect row counts before using the result for dashboards or reports
+- decide whether `NULL` placeholders should be coalesced or left explicit

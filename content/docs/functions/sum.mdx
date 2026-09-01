@@ -1,0 +1,42 @@
+---
+title: SUM
+description: Aggregate values across a set of rows and return their total.
+---
+
+## Syntax
+
+```sql
+SUM(expression)
+```
+
+## What it does
+
+`SUM()` adds values across rows in a group. It is commonly used for totals, revenue, and aggregate reporting.
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  SUM(amount) AS lifetime_value
+FROM orders
+GROUP BY customer_id;
+```
+
+## Important behavior
+
+- `SUM()` ignores `NULL` values in the input expression
+- if all values are `NULL`, the result is `NULL`
+- use `COALESCE` when you need a numeric fallback instead of `NULL`
+
+## Common gotchas
+
+- `SUM()` changes the grain of the result set unless combined with a window function
+- grouping logic must be intentional and consistent with the business definition of a segment
+- row counts and sums may disagree if filtered rows are excluded before aggregation
+
+## Safety checklist
+
+- confirm the intended grouping before aggregating
+- decide whether `NULL` should be treated as zero or excluded
+- validate the returned total against expected business numbers before shipping

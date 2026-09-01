@@ -1,0 +1,38 @@
+---
+title: COUNT
+description: Count rows or non-NULL values in a grouped or ungrouped result set.
+---
+
+## Syntax
+
+```sql
+COUNT(column_name)
+COUNT(*)
+```
+
+## What it does
+
+`COUNT(*)` counts all rows, including those with `NULL` values. `COUNT(column_name)` counts only rows where the expression is not `NULL`.
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  COUNT(*) AS total_orders,
+  COUNT(cancelled_at) AS cancelled_orders
+FROM orders
+GROUP BY customer_id;
+```
+
+## Common gotchas
+
+- `COUNT(*)` is different from `COUNT(column)` when the column can be `NULL`
+- a filter in the `WHERE` clause changes which rows are counted
+- a `LEFT JOIN` with `COUNT(*)` can be misleading unless you are counting the joined rows intentionally
+
+## Safety checklist
+
+- decide whether `NULL`s should count or be excluded
+- confirm the correct grain before grouping
+- check whether the join semantics are producing the row set you expect

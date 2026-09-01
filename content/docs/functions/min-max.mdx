@@ -1,0 +1,57 @@
+---
+title: MIN / MAX
+description: Return the smallest or largest value in a group, including for text and dates.
+---
+
+## Syntax
+
+```sql
+MIN(expression)
+MAX(expression)
+```
+
+## What it does
+
+`MIN()` returns the smallest value in a group and `MAX()` the largest. Both ignore `NULL` values, and both work on numbers, dates, and text (text compares lexicographically by the column collation).
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  MIN(order_date) AS first_order,
+  MAX(order_date) AS last_order,
+  MAX(amount) AS largest_order
+FROM orders
+GROUP BY customer_id;
+```
+
+## Important behavior
+
+- `NULL` values are ignored; if every value is `NULL`, the result is `NULL`
+- `MAX` on a `varchar` orders `'10'` before `'9'` — cast to a number when the column holds numeric text
+- `MIN`/`MAX` do not tell you which row the value came from; use `ROW_NUMBER()` or a correlated filter for that
+
+## Getting the row that owns the extreme value
+
+```sql
+SELECT customer_id, order_id, amount
+FROM (
+  SELECT
+    customer_id,
+    order_id,
+    amount,
+    ROW_NUMBER() OVER (
+      PARTITION BY customer_id
+      ORDER BY amount DESC, order_id DESC
+    ) AS rn
+  FROM orders
+) ranked
+WHERE rn = 1;
+```
+
+## Safety checklist
+
+- confirm the column type sorts the way you expect (numeric vs text vs date)
+- decide whether a group of all-`NULL` values should yield `NULL` or a fallback
+- if you need the full row, rank it — do not assume other columns in the `SELECT` line up with the `MAX`

@@ -1,4 +1,14 @@
 {
   "title": "Docs",
-  "root": true
+  "root": true,
+  "pages": [
+    "index",
+    "sql-reference",
+    "core",
+    "functions",
+    "joins",
+    "windows",
+    "playground",
+    "checklist"
+  ]
 }

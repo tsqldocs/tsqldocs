@@ -1,0 +1,44 @@
+---
+title: GROUP BY
+description: Control aggregation grain and avoid accidental output changes.
+---
+
+## What it does
+
+`GROUP BY` collapses rows into one row per distinct combination of the grouping columns, then computes aggregate functions like `SUM`, `COUNT`, `AVG`, and `MAX` over each group.
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  COUNT(*) AS orders,
+  SUM(amount) AS total_spend
+FROM orders
+GROUP BY customer_id;
+```
+
+## Important behavior
+
+- every non-aggregated column in the `SELECT` list must be included in `GROUP BY`
+- grouping changes the grain of the result set
+- adding or removing a grouping column changes the meaning of the query
+
+## Common mistake
+
+```sql
+SELECT
+  customer_id,
+  order_date,
+  SUM(amount)
+FROM orders
+GROUP BY customer_id;
+```
+
+This is invalid in most SQL engines because `order_date` is not aggregated and not grouped.
+
+## Safety checklist
+
+- define the intended aggregation grain
+- ensure all selected columns are either grouped or aggregated
+- review the result set before using it in dashboards or exports

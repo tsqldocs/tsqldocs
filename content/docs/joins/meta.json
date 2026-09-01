@@ -1,4 +1,9 @@
 {
   "title": "Joins",
-  "root": true
+  "root": true,
+  "pages": [
+    "inner-join",
+    "left-join",
+    "full-outer-join"
+  ]
 }

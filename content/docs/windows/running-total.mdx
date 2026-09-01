@@ -3,6 +3,15 @@ title: Running total
 description: Use a window aggregate to keep row-granularity while calculating cumulative values.
 ---
 
+## Syntax
+
+```sql
+SUM(expression) OVER (
+  [PARTITION BY partition_expression, ...]
+  ORDER BY sort_expression [ASC | DESC], ...
+)
+```
+
 ## Example
 
 ```sql

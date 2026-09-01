@@ -1,13 +1,32 @@
 ---
-title: Hello World
-description: Your first document
+title: SQL docs
+description: Reference patterns, function guides, and practical SQL examples for data engineering teams.
 ---
 
-Welcome to the docs! You can start writing documents in `/content/docs`.
+# SQL reference
 
-## What is Next?
+A practical guide to SQL syntax, functions, ranking, joins, and window patterns you can actually use in production.
+
+## Start here
 
 <Cards>
-  <Card title="Learn more about Next.js" href="https://nextjs.org/docs" />
-  <Card title="Learn more about Fumadocs" href="https://fumadocs.dev" />
+  <Card title="Function reference" description="Browse the most-used SQL functions and their semantics." href="/docs/functions" />
+  <Card title="SQL reference" description="Learn the core syntax, clauses, and query patterns." href="/docs/sql-reference" />
+  <Card title="Playground" description="Try snippets and compare output in real time." href="/docs/playground" />
+  <Card title="Join patterns" description="See how table relationships are expressed in practice." href="/docs/joins" />
 </Cards>
+
+## Core topics
+
+- `SELECT`, `FROM`, `WHERE`, and filtering semantics
+- `JOIN` patterns for fact and dimension tables
+- window functions like `ROW_NUMBER`, `RANK`, and `DENSE_RANK`
+- `NULL` handling, `COALESCE`, and boolean logic
+- aggregation, grouping, and ordering strategies
+
+## Best practices
+
+- prefer explicit `ORDER BY` when rank-based logic matters
+- keep grouping and partition logic readable
+- document edge cases before shipping reusable SQL
+- test patterns in the playground before productionizing them

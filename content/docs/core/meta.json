@@ -1,4 +1,11 @@
 {
   "title": "Core SQL",
-  "root": true
+  "root": true,
+  "pages": [
+    "nulls",
+    "where",
+    "order-by",
+    "group-by",
+    "case"
+  ]
 }

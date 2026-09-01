@@ -8,9 +8,22 @@ description: Practical SQL function reference pages for the most-used patterns.
 <Cards>
   <Card title="ROW_NUMBER" description="Assign a unique row number within each partition." href="/docs/functions/row_number" />
   <Card title="RANK" description="Rank rows and keep ties together." href="/docs/functions/rank" />
-  <Card title="COALESCE" description="Return the first non-NULL value." href="/docs/functions/coalesce" />
+  <Card title="DENSE_RANK" description="Rank rows with ties together and no gaps in the sequence." href="/docs/functions/dense_rank" />
+  <Card title="COUNT" description="Count rows or non-NULL values in a group." href="/docs/functions/count" />
   <Card title="SUM" description="Aggregate values across a group." href="/docs/functions/sum" />
+  <Card title="AVG" description="Average a set of values, with NULL and integer-division caveats." href="/docs/functions/avg" />
+  <Card title="MIN / MAX" description="Return the smallest or largest value in a group." href="/docs/functions/min-max" />
+  <Card title="COALESCE" description="Return the first non-NULL value." href="/docs/functions/coalesce" />
 </Cards>
+
+## Why these matter
+
+Most business logic fails not because of a complex algorithm, but because the team did not agree on:
+
+- what counts as a row
+- how `NULL` values are treated
+- how ties are ordered
+- whether a window function or aggregate is the right tool
 
 ## Good habits
 
@@ -18,3 +31,4 @@ description: Practical SQL function reference pages for the most-used patterns.
 - use `PARTITION BY` for per-group ranking
 - guard nullable results with `COALESCE` or `CASE`
 - document tie policy when ranking and paging
+- add a stable tiebreaker before shipping user-facing ranking logic

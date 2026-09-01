@@ -1,0 +1,59 @@
+---
+title: WHERE
+description: Filter rows before grouping, and understand how NULL and join filters change the result.
+---
+
+## Syntax
+
+```sql
+SELECT ...
+FROM table
+WHERE predicate [AND | OR predicate ...];
+```
+
+## What it does
+
+`WHERE` removes rows before `GROUP BY`, aggregates, and window functions run. A row is kept only when the predicate evaluates to `TRUE` — a predicate that evaluates to `FALSE` **or** `UNKNOWN` drops the row.
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  amount
+FROM orders
+WHERE status = 'paid'
+  AND amount > 0;
+```
+
+## NULL makes predicates UNKNOWN
+
+```sql
+WHERE cancelled_at = NULL      -- never matches
+WHERE cancelled_at IS NULL     -- correct
+```
+
+Any comparison with `NULL` returns `UNKNOWN`, so `WHERE col <> 'x'` silently drops rows where `col` is `NULL`. Add `OR col IS NULL` when those rows should stay.
+
+## LEFT JOIN filters belong in ON
+
+```sql
+-- turns the LEFT JOIN into an INNER JOIN
+FROM customers c
+LEFT JOIN orders o ON c.customer_id = o.customer_id
+WHERE o.status = 'paid';
+
+-- keeps unmatched customers
+FROM customers c
+LEFT JOIN orders o
+  ON c.customer_id = o.customer_id
+  AND o.status = 'paid';
+```
+
+A predicate on the right-side table in `WHERE` removes the `NULL`-filled unmatched rows, collapsing the outer join. Move the condition into `ON` when you need to keep them.
+
+## Safety check before shipping
+
+- decide whether `NULL` rows should pass or be excluded for each predicate
+- confirm right-side filters on outer joins are in `ON`, not `WHERE`, unless the collapse is intended
+- check row counts before and after adding a filter

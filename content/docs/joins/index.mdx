@@ -16,6 +16,7 @@ description: Join patterns, common mistakes, and ways to make relational queries
 - incorrect join keys produce duplicate rows
 - `LEFT JOIN` with filters in the `WHERE` clause can accidentally turn it into an inner join
 - missing `ON` conditions create ambiguous result sets
+- `FULL OUTER JOIN` is easy to overuse when a `LEFT JOIN` or `INNER JOIN` is the actual intent
 
 ## Example
 
@@ -29,3 +30,7 @@ FROM customers c
 LEFT JOIN orders o
   ON c.customer_id = o.customer_id;
 ```
+
+## Shipping discipline
+
+Before shipping a join-heavy query, confirm the row counts, expected unmatched rows, and whether the `WHERE` clause is changing the semantics of an otherwise valid outer join.

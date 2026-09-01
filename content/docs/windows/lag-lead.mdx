@@ -1,0 +1,54 @@
+---
+title: LAG / LEAD
+description: Read a value from a previous or following row without a self-join.
+---
+
+## Syntax
+
+```sql
+LAG(expression [, offset [, default]]) OVER (
+  [PARTITION BY partition_expression, ...]
+  ORDER BY sort_expression [ASC | DESC], ...
+)
+
+LEAD(expression [, offset [, default]]) OVER ( ... )
+```
+
+## What it does
+
+`LAG()` returns `expression` from the row `offset` positions **before** the current row in the window order; `LEAD()` looks `offset` positions **after**. `offset` defaults to `1`. When there is no such row the result is `default`, or `NULL` if no default is given.
+
+## Example
+
+```sql
+SELECT
+  month,
+  revenue,
+  revenue - LAG(revenue) OVER (ORDER BY month) AS mom_change
+FROM monthly_revenue;
+```
+
+## Per-group comparison
+
+```sql
+SELECT
+  customer_id,
+  order_date,
+  order_date - LAG(order_date) OVER (
+    PARTITION BY customer_id
+    ORDER BY order_date
+  ) AS days_since_previous
+FROM orders;
+```
+
+## Common pitfalls
+
+- the first row of each partition has no prior row — `LAG` returns `NULL` (or your `default`) there, and subtracting from it yields `NULL`
+- the window `ORDER BY` defines "previous"; without a stable tiebreaker, ties make the neighbour arbitrary
+- `PARTITION BY` resets the lookback at each group boundary — leave it out only if you really want to read across groups
+
+## Safety check before shipping
+
+- decide what the boundary rows should show — `NULL`, `0`, or a supplied default
+- confirm the window `ORDER BY` is deterministic
+- check whether the comparison should reset per partition

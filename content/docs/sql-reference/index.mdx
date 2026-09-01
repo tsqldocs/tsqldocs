@@ -1,0 +1,45 @@
+---
+title: SQL reference
+description: Core SQL clauses, patterns, and production-safe query semantics.
+---
+
+# SQL reference
+
+This section is the quick-start map for the SQL patterns that most often create bugs during feature work, reporting, and analytics pipelines.
+
+## Core areas
+
+<Cards>
+  <Card title="Core SQL" description="NULLs, ordering, grouping, and the semantics that matter in real queries." href="/docs/core" />
+  <Card title="Functions" description="Window functions and scalar functions you use in performance-sensitive queries." href="/docs/functions" />
+  <Card title="Joins" description="How table relationships are expressed and where logic goes wrong." href="/docs/joins" />
+  <Card title="Window functions" description="ROW_NUMBER, RANK, and cumulative logic for per-row calculations." href="/docs/windows" />
+</Cards>
+
+## The most important rules
+
+- `NULL` is not equal to anything in standard SQL
+- `ORDER BY` without a stable tiebreaker is not reproducible
+- `GROUP BY` changes the grain of the result set
+- window functions do not collapse rows like aggregates do
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  COALESCE(MAX(order_date), 'never') AS last_order_date,
+  SUM(amount) AS lifetime_value
+FROM orders
+GROUP BY customer_id
+ORDER BY customer_id;
+```
+
+## Shipping discipline
+
+Before shipping a query, confirm:
+
+1. which columns are nullable
+2. how ties should be ordered
+3. whether the result must be grouped by user, month, or event
+4. whether a window function is appropriate instead of a group-by aggregate

@@ -1,0 +1,67 @@
+---
+title: CASE
+description: Branch on conditions to reshape values for filtering, grouping, and display.
+---
+
+## Syntax
+
+```sql
+CASE
+  WHEN condition_1 THEN result_1
+  WHEN condition_2 THEN result_2
+  ELSE default_result
+END
+```
+
+There is also a shorthand form that compares one expression to fixed values:
+
+```sql
+CASE status
+  WHEN 'paid' THEN 1
+  WHEN 'refunded' THEN -1
+  ELSE 0
+END
+```
+
+## What it does
+
+`CASE` evaluates each `WHEN` in order and returns the first matching `THEN`. If nothing matches and there is no `ELSE`, the result is `NULL`.
+
+## Example
+
+```sql
+SELECT
+  order_id,
+  CASE
+    WHEN amount >= 1000 THEN 'large'
+    WHEN amount >= 100 THEN 'medium'
+    ELSE 'small'
+  END AS size_bucket
+FROM orders;
+```
+
+## Common pitfalls
+
+- a missing `ELSE` returns `NULL`, which then flows into aggregates and filters
+- `WHEN col = NULL` never matches — use `WHEN col IS NULL`
+- order matters: overlapping conditions resolve to the first one that is true
+- all branches must return compatible types, or the engine will cast or error
+
+## Aggregating with CASE
+
+```sql
+SELECT
+  customer_id,
+  COUNT(*) AS orders,
+  SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END) AS refunds
+FROM orders
+GROUP BY customer_id;
+```
+
+This is the standard way to count a subset without a second query. Use `0`, not `NULL`, in the `ELSE` when the value is summed.
+
+## Safety check before shipping
+
+- confirm every intended input falls into a branch, or that `NULL` from the fallthrough is acceptable
+- check branch ordering when conditions can overlap
+- decide whether the `ELSE` should be `0`, `NULL`, or a sentinel value for downstream logic

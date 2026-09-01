@@ -9,8 +9,10 @@ These pages cover the semantics most likely to cause bad production queries:
 
 <Cards>
   <Card title="NULL handling" description="What NULL means, how comparisons behave, and how COALESCE helps." href="/docs/core/nulls" />
+  <Card title="WHERE" description="Filter rows before grouping, and see how NULL and join filters change the result." href="/docs/core/where" />
   <Card title="ORDER BY" description="How ordering works, why ties matter, and how to make output deterministic." href="/docs/core/order-by" />
   <Card title="GROUP BY" description="When aggregates change the shape of your result set." href="/docs/core/group-by" />
+  <Card title="CASE" description="Branch on conditions to reshape values for filtering, grouping, and display." href="/docs/core/case" />
 </Cards>
 
 ## Keep this checklist close
@@ -25,9 +27,9 @@ These pages cover the semantics most likely to cause bad production queries:
 ```sql
 SELECT
   customer_id,
-  COALESCE(last_order_date, 'never') AS last_order_date,
+  COALESCE(MAX(order_date), 'never') AS last_order_date,
   COUNT(*) AS orders
 FROM orders
-GROUP BY customer_id, last_order_date
+GROUP BY customer_id
 ORDER BY customer_id;
 ```

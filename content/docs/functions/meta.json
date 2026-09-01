@@ -1,4 +1,17 @@
 {
   "title": "Functions",
-  "root": true
+  "root": true,
+  "pages": [
+    "---Window functions---",
+    "row_number",
+    "rank",
+    "dense_rank",
+    "---Aggregates---",
+    "count",
+    "sum",
+    "avg",
+    "min-max",
+    "---Scalar---",
+    "coalesce"
+  ]
 }

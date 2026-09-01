@@ -1,4 +1,9 @@
 {
   "title": "Window functions",
-  "root": true
+  "root": true,
+  "pages": [
+    "running-total",
+    "lag-lead",
+    "ntile"
+  ]
 }

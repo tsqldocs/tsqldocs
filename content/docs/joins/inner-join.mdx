@@ -1,0 +1,42 @@
+---
+title: INNER JOIN
+description: Return only the rows that match in both tables.
+---
+
+## Syntax
+
+```sql
+SELECT *
+FROM customers c
+INNER JOIN orders o
+  ON c.customer_id = o.customer_id;
+```
+
+## What it does
+
+An `INNER JOIN` keeps only the rows with matching keys in both tables. It is the most common join when filtering to existing relationships.
+
+## Example
+
+```sql
+SELECT
+  c.customer_id,
+  c.name,
+  o.order_id,
+  o.total_amount
+FROM customers c
+INNER JOIN orders o
+  ON c.customer_id = o.customer_id;
+```
+
+## Common pitfalls
+
+- the join key may be wrong or mismatched
+- duplicate rows may appear if the join key is not unique in one or both tables
+- downstream filters may hide rows you expected to see
+
+## Safety check before shipping
+
+- confirm the join key represents the intended relationship
+- inspect row counts before and after the join
+- decide whether duplicates are valid or indicate a broken relationship

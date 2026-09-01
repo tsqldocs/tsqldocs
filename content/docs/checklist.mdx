@@ -1,0 +1,31 @@
+---
+title: Validation checklist
+description: A practical checklist for verifying SQL queries before shipping them.
+---
+
+## Shipping discipline
+
+Before a query is shipped, review the rules below.
+
+## Checklist
+
+- verify the join keys and row counts
+- confirm how `NULL` values are handled
+- decide whether ordering is deterministic
+- check whether any rank or window logic needs a tie-breaker
+- make sure aggregates match the intended grain
+
+## Example
+
+```sql
+SELECT
+  customer_id,
+  COUNT(*) AS total_orders,
+  SUM(amount) AS lifetime_value
+FROM orders
+WHERE amount IS NOT NULL
+GROUP BY customer_id
+ORDER BY total_orders DESC, customer_id ASC;
+```
+
+This template forces review of the key correctness questions before productionizing a query.
