@@ -10,7 +10,14 @@
   --fd-primary: #2563eb;
   --fd-primary-foreground: #eff6ff;
   --fd-border: rgba(15, 23, 42, 0.08);
-  --fd-layout-width: 1400px;
+  --fd-layout-width: 1760px;
+}
+
+/* Widen the docs content column (fumadocs defaults the article to 900px) so
+   code blocks, tables, and the SQL runner widgets have room; prose text is
+   still line-length-capped by the .prose rule below. */
+#nd-page {
+  max-width: 1200px;
 }
 
 html {
@@ -46,7 +53,7 @@ html > body[data-scroll-locked] {
 }
 
 .fumadocs-layout {
-  --fd-layout-width: 1500px;
+  --fd-layout-width: 1760px;
 }
 
 html.dark {
@@ -75,7 +82,7 @@ a {
 }
 
 .prose {
-  max-width: 72ch;
+  max-width: 82ch;
 }
 
 .prose h1,
