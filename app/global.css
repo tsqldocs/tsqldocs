@@ -2,83 +2,51 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 
+/* Fumadocs + next-themes toggle the theme with the `dark` class. Tailwind v4's
+   `dark:` variant defaults to prefers-color-scheme, which desynced the home
+   page from the docs. Bind it to the class so everything switches together. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Light palette — v16 token names (--color-fd-*). */
 :root {
-  --fd-background: #f7f8fb;
-  --fd-card: rgba(255, 255, 255, 0.72);
-  --fd-foreground: #101828;
-  --fd-muted: #eef2f7;
-  --fd-primary: #2563eb;
-  --fd-primary-foreground: #eff6ff;
-  --fd-border: rgba(15, 23, 42, 0.08);
+  --color-fd-background: #f7f8fb;
+  --color-fd-foreground: #101828;
+  --color-fd-muted: #eef2f7;
+  --color-fd-muted-foreground: #55606f;
+  --color-fd-border: #e2e8f0;
+  --color-fd-card: #ffffff;
+  --color-fd-card-foreground: #101828;
+  --color-fd-popover: #ffffff;
+  --color-fd-popover-foreground: #101828;
+  --color-fd-accent: #eef2f7;
+  --color-fd-accent-foreground: #101828;
+  --color-fd-primary: #2563eb;
+  --color-fd-primary-foreground: #eff6ff;
+
   --fd-layout-width: 1760px;
 }
 
-/* Widen the docs content column (fumadocs defaults the article to 900px) so
-   code blocks, tables, and the SQL runner widgets have room; prose text is
-   still line-length-capped by the .prose rule below. */
+.dark {
+  --color-fd-background: #0a0f1a;
+  --color-fd-foreground: #ecf2ff;
+  --color-fd-muted: #111827;
+  --color-fd-muted-foreground: #94a3b8;
+  --color-fd-border: #1e293b;
+  --color-fd-card: #0f172a;
+  --color-fd-card-foreground: #ecf2ff;
+  --color-fd-popover: #0f172a;
+  --color-fd-popover-foreground: #ecf2ff;
+  --color-fd-accent: #1e293b;
+  --color-fd-accent-foreground: #ecf2ff;
+  --color-fd-primary: #60a5fa;
+  --color-fd-primary-foreground: #0f172a;
+}
+
+/* Widen the docs reading column (fumadocs defaults the article to ~900px) so
+   code blocks, tables, and the coming SQL-runner widgets have room; prose text
+   stays line-length-capped below. */
 #nd-page {
   max-width: 1200px;
-}
-
-html {
-  scrollbar-gutter: stable;
-  background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 30%),
-    linear-gradient(180deg, #f8fafc 0%, #eef4ff 100%);
-}
-
-body {
-  background: transparent;
-  color: var(--fd-foreground);
-}
-
-html > body[data-scroll-locked] {
-  margin-right: 0px !important;
-  --removed-body-scroll-bar-size: 0px !important;
-}
-
-#nd-subnav {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(18px);
-  border-color: var(--fd-border);
-}
-
-[data-fd-docs-layout] {
-  background: transparent;
-}
-
-[data-fd-docs-layout] > main,
-[data-fd-docs-layout] > div {
-  background: transparent;
-}
-
-.fumadocs-layout {
-  --fd-layout-width: 1760px;
-}
-
-html.dark {
-  --fd-background: #0a0f1a;
-  --fd-card: rgba(15, 23, 42, 0.7);
-  --fd-foreground: #ecf2ff;
-  --fd-muted: #111827;
-  --fd-primary: #60a5fa;
-  --fd-primary-foreground: #0f172a;
-  --fd-border: rgba(148, 163, 184, 0.2);
-}
-
-html.dark {
-  background:
-    radial-gradient(circle at top left, rgba(96, 165, 250, 0.18), transparent 30%),
-    linear-gradient(180deg, #020817 0%, #0f172a 100%);
-}
-
-::selection {
-  background: rgba(96, 165, 250, 0.32);
-}
-
-button,
-a {
-  transition: all 180ms ease;
 }
 
 .prose {
@@ -91,7 +59,11 @@ a {
   letter-spacing: -0.04em;
 }
 
-.fumadocs-toc a,
-.fumadocs-sidebar a {
-  border-radius: 0.75rem;
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
 }
