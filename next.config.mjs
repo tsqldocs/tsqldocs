@@ -1,4 +1,5 @@
 import { createMDX } from 'fumadocs-mdx/next';
+import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
 
 const withMDX = createMDX({
   macro: {
@@ -11,5 +12,7 @@ const config = {
   serverExternalPackages: ['@takumi-rs/core'],
   reactStrictMode: true,
 };
+
+initOpenNextCloudflareForDev();
 
 export default withMDX(config);

@@ -1,26 +1,25 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "tsqldocs",
-	"compatibility_date": "2026-09-01",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"main": "vinext/server/fetch-handler",
-	"assets": {
-		"directory": "dist/client",
-		"not_found_handling": "none",
-		"binding": "ASSETS"
-	},
-	"cache": {
-		"enabled": true
-	},
-	"images": {
-		"binding": "IMAGES"
-	},
-	"kv_namespaces": [
-		{
-			"binding": "VINEXT_KV_CACHE",
-			"id": "4ecfde3f9d854746876538a8a64fc219"
-		}
-	]
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "tsqldocs",
+  "workers_dev": true,
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+    "html_handling": "none"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "tsqldocs"
+    }
+  ],
+  "images": {
+    "binding": "IMAGES"
+  },
+  "routes": [
+    { "pattern": "tsqldocs.com", "custom_domain": true }
+  ]
 }
