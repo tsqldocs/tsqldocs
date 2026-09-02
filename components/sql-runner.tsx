@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SparklesIcon } from 'lucide-react';
+import { useAISearchContext } from '@/components/ai/search';
 
 /* ------------------------------------------------------------------ *
  * Minimal sql.js typings (the package ships none).
@@ -155,6 +157,32 @@ export function SqlRunner({ query = DEFAULT_QUERY }: { query?: string }) {
   const [state, setState] = useState<RunState>({ status: 'idle' });
   const [showSchema, setShowSchema] = useState(false);
   const runningRef = useRef(false);
+  const ai = useAISearchContext();
+
+  const askAI = useCallback(() => {
+    if (!ai) return;
+    let context = '';
+    if (state.status === 'ok' && state.results.length) {
+      const r = state.results[0];
+      context =
+        `\n\nIt returned ${r.values.length} row(s), columns [${r.columns.join(', ')}]. ` +
+        `First row: ${JSON.stringify(r.values[0])}.`;
+    } else if (state.status === 'error') {
+      context = `\n\nIt failed with: ${state.message}`;
+    }
+    const text =
+      `I'm using the SQL playground (SQLite, sample tables: customers, orders, ` +
+      `employees, product_sales, monthly_revenue). I ran:\n\n\`\`\`sql\n${sql}\n\`\`\`` +
+      `${context}\n\nExplain what this query does and why the result looks like that.`;
+    ai.setOpen(true);
+    void ai.chat.sendMessage({
+      role: 'user',
+      parts: [
+        { type: 'data-client', data: { location: location.href } },
+        { type: 'text', text },
+      ],
+    });
+  }, [ai, sql, state]);
 
   const run = useCallback(async () => {
     if (runningRef.current) return;
@@ -228,9 +256,21 @@ export function SqlRunner({ query = DEFAULT_QUERY }: { query?: string }) {
           {state.status === 'loading' ? 'Running…' : 'Run'}
         </button>
         <span className="text-[11px] text-fd-muted-foreground">⌘/Ctrl + Enter</span>
-        {state.status === 'ok' && (
-          <span className="ml-auto text-[11px] text-fd-muted-foreground">{state.ms} ms</span>
-        )}
+        <div className="ml-auto flex items-center gap-3">
+          {state.status === 'ok' && (
+            <span className="text-[11px] text-fd-muted-foreground">{state.ms} ms</span>
+          )}
+          {ai && (
+            <button
+              type="button"
+              onClick={askAI}
+              className="inline-flex items-center gap-1.5 text-[11px] text-fd-muted-foreground transition hover:text-fd-foreground [&_svg]:size-3.5 [&_svg]:text-fd-primary"
+            >
+              <SparklesIcon />
+              Ask AI about this
+            </button>
+          )}
+        </div>
       </div>
 
       {state.status === 'error' && (
