@@ -1,8 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SparklesIcon } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { useTheme } from 'next-themes';
+import { CheckIcon, CopyIcon, SparklesIcon } from 'lucide-react';
 import { useAISearchContext } from '@/components/ai/search';
+
+const SqlEditor = dynamic(() => import('./sql-editor'), {
+  ssr: false,
+  loading: () => (
+    <pre className="px-3 py-6 font-mono text-[13px] text-fd-muted-foreground">Loading editor…</pre>
+  ),
+});
 
 /* ------------------------------------------------------------------ *
  * Minimal sql.js typings (the package ships none).
@@ -156,8 +165,16 @@ export function SqlRunner({ query = DEFAULT_QUERY }: { query?: string }) {
   const [sql, setSql] = useState(query.trim());
   const [state, setState] = useState<RunState>({ status: 'idle' });
   const [showSchema, setShowSchema] = useState(false);
+  const [copied, setCopied] = useState(false);
   const runningRef = useRef(false);
   const ai = useAISearchContext();
+  const { resolvedTheme } = useTheme();
+
+  const copy = useCallback(() => {
+    void navigator.clipboard?.writeText(sql);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [sql]);
 
   const askAI = useCallback(() => {
     if (!ai) return;
@@ -209,24 +226,27 @@ export function SqlRunner({ query = DEFAULT_QUERY }: { query?: string }) {
     void getDatabase().catch(() => {});
   }, []);
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      void run();
-    }
-  };
-
   return (
     <div className="not-prose my-6 overflow-hidden rounded-xl border border-fd-border bg-fd-card">
       <div className="flex items-center justify-between gap-2 border-b border-fd-border bg-fd-muted/40 px-3 py-2">
         <span className="text-xs font-medium text-fd-muted-foreground">SQL playground</span>
-        <button
-          type="button"
-          onClick={() => setShowSchema((v) => !v)}
-          className="text-xs text-fd-muted-foreground underline-offset-2 hover:text-fd-foreground hover:underline"
-        >
-          {showSchema ? 'hide tables' : 'tables'}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={copy}
+            className="inline-flex items-center gap-1.5 text-xs text-fd-muted-foreground transition hover:text-fd-foreground [&_svg]:size-3.5"
+          >
+            {copied ? <CheckIcon /> : <CopyIcon />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSchema((v) => !v)}
+            className="text-xs text-fd-muted-foreground underline-offset-2 hover:text-fd-foreground hover:underline"
+          >
+            {showSchema ? 'hide tables' : 'tables'}
+          </button>
+        </div>
       </div>
 
       {showSchema && (
@@ -237,13 +257,11 @@ export function SqlRunner({ query = DEFAULT_QUERY }: { query?: string }) {
         </ul>
       )}
 
-      <textarea
+      <SqlEditor
         value={sql}
-        onChange={(e) => setSql(e.target.value)}
-        onKeyDown={onKeyDown}
-        spellCheck={false}
-        rows={Math.min(16, Math.max(4, sql.split('\n').length + 1))}
-        className="block w-full resize-y bg-transparent px-3 py-3 font-mono text-[13px] leading-6 text-fd-foreground outline-none"
+        onChange={setSql}
+        onRun={() => void run()}
+        dark={resolvedTheme === 'dark'}
       />
 
       <div className="flex items-center gap-3 border-t border-fd-border bg-fd-muted/40 px-3 py-2">

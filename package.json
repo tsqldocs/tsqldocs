@@ -16,7 +16,9 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.82",
+    "@codemirror/lang-sql": "^6.10.0",
     "@openrouter/ai-sdk-provider": "^3.0.0",
+    "@uiw/react-codemirror": "^4.25.11",
     "ai": "^7.0.79",
     "class-variance-authority": "^0.7.1",
     "cnfast": "^0.1.0",
