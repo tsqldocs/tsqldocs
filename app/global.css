@@ -65,6 +65,29 @@
   letter-spacing: -0.04em;
 }
 
+/* Section headings deep-link on the heading text (fumadocs wraps it in an
+   anchor). Give h2/h3 a sliding accent underline on hover. */
+.prose :is(h2, h3) a {
+  position: relative;
+  text-decoration: none;
+}
+.prose :is(h2, h3) a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.12em;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--color-fd-primary);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 220ms ease;
+}
+.prose :is(h2, h3) a:hover::after {
+  transform: scaleX(1);
+}
+
 html {
   scrollbar-gutter: stable;
 }
