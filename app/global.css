@@ -67,3 +67,38 @@ html > body[data-scroll-locked] {
   margin-right: 0px !important;
   --removed-body-scroll-bar-size: 0px !important;
 }
+
+/* --- Visual polish ------------------------------------------------------- */
+
+/* Soft page-wide gradient wash behind the (transparent) layout. */
+body {
+  background:
+    radial-gradient(60rem 60rem at 0% 0%, color-mix(in oklab, var(--color-fd-primary) 10%, transparent), transparent 60%),
+    linear-gradient(180deg, var(--color-fd-background) 0%, color-mix(in oklab, var(--color-fd-primary) 4%, var(--color-fd-background)) 100%);
+  background-attachment: fixed;
+}
+
+[data-fd-docs-layout],
+[data-fd-docs-layout] > main,
+[data-fd-docs-layout] > div {
+  background: transparent;
+}
+
+/* Frosted top nav / sub-nav. */
+#nd-subnav,
+#nd-nav {
+  background: color-mix(in oklab, var(--color-fd-background) 78%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-color: var(--color-fd-border);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-fd-primary) 32%, transparent);
+}
+
+/* Rounder hit-targets in the sidebar / TOC. */
+#nd-sidebar a,
+#nd-toc a {
+  border-radius: 0.7rem;
+}

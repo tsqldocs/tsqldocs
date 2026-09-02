@@ -1,48 +1,76 @@
 ---
 title: SQL playground
-description: Run SQL snippets against a lightweight local engine to test edge-case behavior.
+description: Edit and run SQL in your browser against a seeded SQLite database.
 full: true
 ---
 
-## Playground status
+Every query below runs entirely in your browser (SQLite compiled to WebAssembly) —
+nothing is sent anywhere. Edit the SQL and press **Run** (or `⌘/Ctrl + Enter`).
 
-<Callout type="warn">
-  The interactive playground is not built yet. This page describes the intended
-  behavior; the query examples below still work in any SQL engine in the meantime.
-</Callout>
+<SqlRunner />
 
-It is intentionally scoped to a reliable local execution model for experimentation, not a production-grade database emulator.
+## Aggregation and grain
 
-## What it should help with
+`GROUP BY` collapses rows to one per group. Every non-aggregated column in the
+`SELECT` list has to be grouped or aggregated.
 
-- testing `NULL` handling
-- validating ranking and window logic
-- comparing `ORDER BY` behavior with and without tiebreakers
-- checking partition-by semantics in a controlled environment
+<SqlRunner query={`SELECT
+  c.country,
+  COUNT(DISTINCT c.customer_id) AS customers,
+  COUNT(o.order_id)             AS orders,
+  COALESCE(SUM(o.amount), 0)    AS revenue
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.customer_id
+GROUP BY c.country
+ORDER BY revenue DESC;`} />
 
-## Good test queries
+## NULL semantics
 
-```sql
-SELECT 1 AS id, NULL AS value
-UNION ALL
-SELECT 2, 'abc';
-```
+`NULL` is not equal to anything — filter with `IS NULL`, and remember that
+`COUNT(column)` skips nulls while `COUNT(*)` does not.
 
-```sql
-SELECT
-  customer_id,
-  ROW_NUMBER() OVER (
-    PARTITION BY customer_id
-    ORDER BY purchase_date DESC
-  ) AS rn
-FROM purchases;
-```
+<SqlRunner query={`SELECT
+  status,
+  COUNT(*)             AS rows,
+  COUNT(cancelled_at)  AS have_cancel_date
+FROM orders
+GROUP BY status;`} />
 
-## Shipping discipline
+## Window functions and ties
 
-Before shipping any SQL playground behavior, verify:
+`RANK()` leaves gaps after a tie; `DENSE_RANK()` does not; `ROW_NUMBER()` breaks
+ties arbitrarily unless you add a tiebreaker.
 
-- engines agree on `NULL` semantics
-- ranking ties are documented and stable
-- `PARTITION BY` logic is correct
-- output formatting is predictable and easy to audit
+<SqlRunner query={`SELECT
+  name,
+  department_id,
+  salary,
+  ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY salary DESC, name) AS rn,
+  RANK()       OVER (PARTITION BY department_id ORDER BY salary DESC)       AS rnk,
+  DENSE_RANK() OVER (PARTITION BY department_id ORDER BY salary DESC)       AS dense
+FROM employees
+ORDER BY department_id, salary DESC, name;`} />
+
+## Running totals
+
+A window aggregate keeps row-level detail while accumulating.
+
+<SqlRunner query={`SELECT
+  month,
+  revenue,
+  SUM(revenue) OVER (ORDER BY month) AS running_total
+FROM monthly_revenue
+ORDER BY month;`} />
+
+## Available tables
+
+| table | columns |
+| --- | --- |
+| `customers` | `customer_id, name, country` |
+| `orders` | `order_id, customer_id, order_date, amount, status, cancelled_at` |
+| `employees` | `employee_id, name, department_id, salary` |
+| `product_sales` | `product_id, category_id, product_name, sales` |
+| `monthly_revenue` | `month, revenue` |
+
+The dataset is small and reset on every page load — it's for checking semantics
+(nulls, ties, join fan-out, partitioning), not for performance testing.
