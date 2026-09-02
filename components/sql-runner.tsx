@@ -18,6 +18,7 @@ interface SqlJsStatic {
 }
 type InitSqlJs = (config?: {
   locateFile?: (file: string) => string;
+  wasmBinary?: ArrayBuffer | Uint8Array;
 }) => Promise<SqlJsStatic>;
 
 /* ------------------------------------------------------------------ *
@@ -126,7 +127,13 @@ function getDatabase(): Promise<SqlJsDatabase> {
     dbPromise = (async () => {
       const mod = await import('sql.js');
       const initSqlJs = (mod.default ?? mod) as unknown as InitSqlJs;
-      const SQL = await initSqlJs({ locateFile: (file) => `/${file}` });
+      // Hand the WASM bytes to Emscripten directly. When sql.js is bundled,
+      // its own `locateFile` resolves relative to the JS chunk URL, not the
+      // site root, so the fetch 404s — fetching here sidesteps that.
+      const res = await fetch('/sql-wasm.wasm');
+      if (!res.ok) throw new Error(`Failed to load SQL engine (${res.status})`);
+      const wasmBinary = await res.arrayBuffer();
+      const SQL = await initSqlJs({ wasmBinary, locateFile: (file) => `/${file}` });
       const db = new SQL.Database();
       db.run(SEED_SQL);
       return db;
