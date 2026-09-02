@@ -102,3 +102,10 @@ body {
 #nd-toc a {
   border-radius: 0.7rem;
 }
+
+/* Guard: a non-<main> element sharing the docs "main" grid cell (e.g. a top
+   tab strip) must sit at the top, not stretch to full height and paint over
+   the article. */
+#nd-docs-layout > :not(main)[class*='grid-area:main'] {
+  align-self: start;
+}
