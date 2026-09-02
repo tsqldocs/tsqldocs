@@ -23,7 +23,10 @@
   --color-fd-primary: #2563eb;
   --color-fd-primary-foreground: #eff6ff;
 
-  --fd-layout-width: 1760px;
+  /* Don't cap the whole sidebar+content+TOC block — let it fill the viewport so
+     the sidebar and TOC sit flush to the screen edges (like xlsdocs/pbidocs).
+     Only the reading column (#nd-page below) stays width-constrained. */
+  --fd-layout-width: 200rem;
 }
 
 .dark {
@@ -42,11 +45,11 @@
   --color-fd-primary-foreground: #0f172a;
 }
 
-/* Widen the docs reading column (fumadocs defaults the article to ~900px) so
-   code blocks, tables, and the coming SQL-runner widgets have room; prose text
-   stays line-length-capped below. */
+/* The reading column. Slightly wider than fumadocs' ~900px default for code
+   blocks and the SQL runner; <main> has justify-items-center so it stays
+   centred in the now-full-width main track. */
 #nd-page {
-  max-width: 1200px;
+  max-width: 980px;
 }
 
 .prose {
