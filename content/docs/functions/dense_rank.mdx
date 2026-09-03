@@ -12,6 +12,19 @@ DENSE_RANK() OVER (
 )
 ```
 
+<Parameters>
+  <Param name="PARTITION BY" type="expression, …">
+    Optional. Restarts the ranking for each group. Without it the whole result
+    set is one partition.
+  </Param>
+  <Param name="ORDER BY" type="expression [ASC|DESC], …" required>
+    Defines the ranking order. Rows that are equal under this ordering are a
+    tie and share a rank.
+  </Param>
+</Parameters>
+
+`DENSE_RANK()` itself takes no arguments — the `OVER (…)` window clause does all the work.
+
 ## What it does
 
 `DENSE_RANK()` gives tied rows the same rank, then continues with the next integer without skipping.
@@ -32,13 +45,25 @@ SELECT
 FROM product_sales;
 ```
 
-## Difference from `RANK()` and `ROW_NUMBER()`
+<SqlRunner query={`SELECT
+  product_name,
+  category_id,
+  sales,
+  DENSE_RANK() OVER (PARTITION BY category_id ORDER BY sales DESC) AS dense_tier,
+  RANK()       OVER (PARTITION BY category_id ORDER BY sales DESC) AS rank_tier
+FROM product_sales
+ORDER BY category_id, sales DESC;`} />
 
-- `ROW_NUMBER()` gives every row a unique number
-- `RANK()` gives ties the same rank and then **skips** numbers (`1, 1, 3`)
-- `DENSE_RANK()` gives ties the same rank with **no gaps** (`1, 1, 2`)
+Category 1 has two products tied at `400`. `DENSE_RANK` gives the next product
+tier `2`; `RANK` gives it `3`.
 
-Use `DENSE_RANK()` when you want "top N distinct values" rather than "top N rows".
+## Related
+
+<Related>
+- [RANK](/docs/functions/rank) — same ties, but **skips** numbers afterwards (`1, 1, 3`).
+- [ROW_NUMBER](/docs/functions/row_number) — always unique; ties are broken arbitrarily unless you add a tiebreaker.
+- [ORDER BY](/docs/core/order-by) — the ordering the window sees; make it deterministic for reproducible ranks.
+</Related>
 
 ## Safety questions
 
