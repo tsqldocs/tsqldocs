@@ -48,11 +48,12 @@
   --color-fd-primary-foreground: #083344;
 }
 
-/* The reading column. Slightly wider than fumadocs' ~900px default for code
-   blocks and the SQL runner; <main> has justify-items-center so it stays
-   centred in the now-full-width main track. */
+/* The reading column. A bit wider than fumadocs' ~900px default for code blocks
+   and the SQL runner; centred in the (full-width) main track so the gutters to
+   the sidebar and TOC stay balanced on wide screens. */
 #nd-page {
   max-width: 980px;
+  margin-inline: auto;
 }
 
 .prose {
