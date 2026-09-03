@@ -8,8 +8,8 @@ export function baseOptions(): BaseLayoutProps {
     },
     links: [
       { type: 'main', url: '/docs', text: 'Docs' },
-      { type: 'main', url: '/docs/sql-reference', text: 'SQL Reference' },
       { type: 'main', url: '/docs/functions', text: 'Functions' },
+      { type: 'main', url: '/docs/recipes', text: 'Recipes' },
       { type: 'main', url: '/docs/playground', text: 'Playground' },
     ],
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,

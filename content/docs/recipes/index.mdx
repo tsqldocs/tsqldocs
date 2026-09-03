@@ -1,0 +1,22 @@
+---
+title: Recipes
+description: Copy-paste patterns for the SQL problems people actually hit at work — each one runnable against a seeded database.
+---
+
+Reference pages tell you what a clause does. These tell you how to solve a
+**problem**: the thing you're actually googling at 4pm.
+
+Every recipe runs against the same small SQLite database (`customers`, `orders`,
+`employees`, `product_sales`, `monthly_revenue`) — edit the query and press
+**Run**.
+
+<Cards>
+  <Card title="Top N per group" description="The single most-asked SQL question — highest-paid employee per department, latest order per customer." href="/docs/recipes/top-n-per-group" />
+  <Card title="Deduplicate rows" description="Keep one row per key when a table has accidental duplicates." href="/docs/recipes/deduplicate" />
+  <Card title="Rows missing in another table" description="Anti-join: customers with no orders, products never sold." href="/docs/recipes/rows-missing-in-another-table" />
+  <Card title="Pivot without PIVOT" description="Turn rows into columns with conditional aggregation — portable across engines." href="/docs/recipes/pivot" />
+  <Card title="Gaps and islands" description="Find runs of consecutive values, or the holes between them." href="/docs/recipes/gaps-and-islands" />
+  <Card title="Running totals & moving averages" description="Cumulative sums, rolling windows, and percent-of-total." href="/docs/recipes/running-totals" />
+</Cards>
+
+<TryPlayground>The full playground has the same tables plus a scratch editor.</TryPlayground>

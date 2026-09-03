@@ -1,0 +1,82 @@
+---
+title: Running totals & moving averages
+description: Cumulative sums, rolling windows, percent-of-total, and month-over-month change — all from one window frame.
+---
+
+## The problem
+
+You want each row to also show something computed over the rows **around** it:
+the total so far, the average of the last 3, its share of the whole.
+
+## Running total
+
+A windowed `SUM` with `ORDER BY` accumulates as it goes — and keeps every row
+(unlike `GROUP BY`, which collapses them).
+
+<SqlRunner query={`SELECT
+  month,
+  revenue,
+  SUM(revenue) OVER (ORDER BY month) AS running_total
+FROM monthly_revenue
+ORDER BY month;`} />
+
+## Moving average (rolling window)
+
+Add an explicit **frame** to average only the current row and the two before it:
+
+<SqlRunner query={`SELECT
+  month,
+  revenue,
+  ROUND(AVG(revenue) OVER (
+    ORDER BY month
+    ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+  ), 1) AS avg_3mo
+FROM monthly_revenue
+ORDER BY month;`} />
+
+Without `ROWS BETWEEN …`, an `ORDER BY` window defaults to *"everything from the
+start through the current row"* — that's the running total, not a rolling window.
+
+## Percent of total
+
+Divide the row by an **un-ordered** window (the whole set):
+
+<SqlRunner query={`SELECT
+  product_name,
+  sales,
+  ROUND(100.0 * sales / SUM(sales) OVER (), 1) AS pct_of_all,
+  ROUND(100.0 * sales / SUM(sales) OVER (PARTITION BY category_id), 1) AS pct_of_category
+FROM product_sales
+ORDER BY category_id, sales DESC;`} />
+
+`SUM(sales) OVER ()` — empty `OVER` — is the grand total on every row. Add
+`PARTITION BY` for a per-group total.
+
+## Month-over-month change
+
+<SqlRunner query={`SELECT
+  month,
+  revenue,
+  revenue - LAG(revenue) OVER (ORDER BY month) AS mom_change,
+  ROUND(100.0 * (revenue - LAG(revenue) OVER (ORDER BY month))
+        / LAG(revenue) OVER (ORDER BY month), 1) AS mom_pct
+FROM monthly_revenue
+ORDER BY month;`} />
+
+The first row has no previous row, so `LAG` is `NULL` and the change is `NULL` —
+usually what you want.
+
+## Gotchas
+
+- **`ROWS` vs `RANGE`.** `ROWS` counts physical rows; `RANGE` groups peers with
+  equal `ORDER BY` values. For a plain N-row window you almost always want `ROWS`.
+- **Ties in the order.** If two rows share the `ORDER BY` value, a `ROWS` frame
+  still splits them arbitrarily. Add a tiebreaker for reproducibility.
+- **Integer division.** `sales / SUM(...)` can floor to 0 — multiply by `100.0`
+  (or cast) first.
+
+<Related>
+- [Running total](/docs/windows/running-total) — the basic windowed-SUM reference.
+- [LAG / LEAD](/docs/windows/lag-lead) — reading the previous/next row for deltas.
+- [Window functions](/docs/windows) — frames, partitions, and ordering explained.
+</Related>

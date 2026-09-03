@@ -1,0 +1,77 @@
+---
+title: Deduplicate rows
+description: Keep exactly one row per key when a table has accidental duplicates — and see the ones you dropped first.
+---
+
+## The problem
+
+A table has rows that should be unique on some key but aren't — a double-submitted
+order, a botched import, a bad join upstream. You want one row per key.
+
+## Look before you delete
+
+`orders` 106 and 107 are the same customer, date, and amount — a duplicate
+submission. Find the dupes first:
+
+<SqlRunner query={`SELECT customer_id, order_date, amount, COUNT(*) AS copies
+FROM orders
+GROUP BY customer_id, order_date, amount
+HAVING COUNT(*) > 1;`} />
+
+## The pattern
+
+Number rows within each key group, keep `rn = 1`:
+
+<SqlRunner query={`SELECT order_id, customer_id, order_date, amount
+FROM (
+  SELECT o.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY customer_id, order_date, amount
+      ORDER BY order_id
+    ) AS rn
+  FROM orders o
+) t
+WHERE rn = 1
+ORDER BY order_id;`} />
+
+The `ORDER BY` inside the window decides **which** copy you keep — here the
+lowest `order_id`. Pick deliberately (earliest `created_at`, non-null-est row,
+etc.).
+
+## Actually deleting them
+
+```sql
+-- Postgres / SQLite: delete by the rows you want to keep
+DELETE FROM orders
+WHERE order_id NOT IN (
+  SELECT MIN(order_id)
+  FROM orders
+  GROUP BY customer_id, order_date, amount
+);
+```
+
+```sql
+-- Engines with deletable CTEs (Postgres, SQL Server)
+WITH ranked AS (
+  SELECT ctid, ROW_NUMBER() OVER (
+    PARTITION BY customer_id, order_date, amount ORDER BY order_id
+  ) AS rn
+  FROM orders
+)
+DELETE FROM orders WHERE ctid IN (SELECT ctid FROM ranked WHERE rn > 1);
+```
+
+## Gotchas
+
+- **Define "duplicate" precisely.** Rows that differ only in an `updated_at` or a
+  surrogate id aren't duplicates for every purpose. Partition by the columns that
+  actually define identity.
+- **`SELECT DISTINCT` only helps** when the *entire row* is identical. It can't
+  keep "one row per customer" while returning other columns.
+- **Run the `SELECT` version first**, eyeball the count, then convert to `DELETE`.
+
+<Related>
+- [Top N per group](/docs/recipes/top-n-per-group) — same ROW_NUMBER trick, N = 1.
+- [ROW_NUMBER](/docs/functions/row_number) — the numbering function.
+- [GROUP BY](/docs/core/group-by) — for the "find the dupes" count.
+</Related>

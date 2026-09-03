@@ -1,0 +1,70 @@
+---
+title: Top N per group
+description: Return the top N rows within each group — highest-paid employee per department, latest order per customer, best-selling product per category.
+---
+
+## The problem
+
+You have rows in groups and you want the top few from **each** group, not the top
+few overall. `LIMIT` alone can't do it — it caps the whole result.
+
+## The pattern
+
+Number the rows within each group with `ROW_NUMBER()`, then keep the low numbers.
+
+```sql
+SELECT *
+FROM (
+  SELECT
+    e.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY department_id
+      ORDER BY salary DESC, name
+    ) AS rn
+  FROM employees e
+) ranked
+WHERE rn <= 2;
+```
+
+<SqlRunner query={`SELECT name, department_id, salary
+FROM (
+  SELECT
+    e.*,
+    ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY salary DESC, name) AS rn
+  FROM employees e
+) ranked
+WHERE rn <= 2
+ORDER BY department_id, salary DESC;`} />
+
+The subquery (or a CTE) is required: you can't put a window function directly in
+`WHERE`, because `WHERE` runs *before* window functions.
+
+## Which numbering function?
+
+<Related>
+- [ROW_NUMBER](/docs/functions/row_number) — exactly N rows per group; ties broken by your tiebreaker. Use this for "top 3 rows".
+- [RANK](/docs/functions/rank) — ties all get in, so "top 3" can return 4+ rows. Use this for "everyone in the top 3 salaries".
+- [DENSE_RANK](/docs/functions/dense_rank) — "top 3 *distinct* values", ties share a slot, no gaps.
+</Related>
+
+## Latest row per key (N = 1)
+
+The most common case — most recent order per customer:
+
+<SqlRunner query={`SELECT customer_id, order_id, order_date, amount
+FROM (
+  SELECT o.*,
+    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC, order_id DESC) AS rn
+  FROM orders o
+) t
+WHERE rn = 1
+ORDER BY customer_id;`} />
+
+## Gotchas
+
+- **Non-deterministic ties.** Without a unique tiebreaker in `ORDER BY`, which
+  row gets `rn = 1` can change between runs. Add a primary key as the last sort key.
+- ** Engines with `QUALIFY`** (BigQuery, Snowflake, DuckDB) let you skip the
+  subquery: `... QUALIFY ROW_NUMBER() OVER (...) <= 2`.
+- **Big groups.** This scans and sorts every row. If you only need N = 1 and have
+  an index on `(group_key, sort_key)`, a lateral/correlated subquery can be faster.

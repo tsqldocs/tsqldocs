@@ -1,0 +1,67 @@
+---
+title: Pivot without PIVOT
+description: Turn row values into columns with conditional aggregation — one query that runs the same on every engine.
+---
+
+## The problem
+
+You have one row per (customer, status) and you want one row per customer with a
+column for each status. Some engines have `PIVOT`; its syntax differs everywhere
+and SQLite / MySQL don't have it at all.
+
+## The pattern: CASE inside an aggregate
+
+One `SUM(CASE …)` per output column. `GROUP BY` the thing you want as rows.
+
+<SqlRunner query={`SELECT
+  customer_id,
+  SUM(CASE WHEN status = 'paid'     THEN amount ELSE 0 END) AS paid,
+  SUM(CASE WHEN status = 'refunded' THEN amount ELSE 0 END) AS refunded,
+  SUM(CASE WHEN status = 'pending'  THEN amount ELSE 0 END) AS pending,
+  SUM(amount) AS total
+FROM orders
+GROUP BY customer_id
+ORDER BY customer_id;`} />
+
+- Use `SUM` for money/counts, `MAX` for "did this row exist" flags, `COUNT` for
+  tallies.
+- `ELSE 0` keeps sums numeric; `ELSE NULL` (the default) is fine for `MAX`.
+- `COUNT(CASE WHEN … THEN 1 END)` counts matches — the `ELSE` is left out on
+  purpose so non-matches are `NULL` and skipped.
+
+## Counting instead of summing
+
+<SqlRunner query={`SELECT
+  country,
+  COUNT(CASE WHEN o.status = 'paid'     THEN 1 END) AS paid_orders,
+  COUNT(CASE WHEN o.status = 'refunded' THEN 1 END) AS refunded_orders,
+  COUNT(*) AS total_rows
+FROM customers c
+JOIN orders o ON o.customer_id = c.customer_id
+GROUP BY country;`} />
+
+## Filtered aggregates (Postgres, SQLite 3.30+)
+
+Cleaner than `CASE` where supported:
+
+```sql
+SELECT
+  customer_id,
+  SUM(amount) FILTER (WHERE status = 'paid')     AS paid,
+  SUM(amount) FILTER (WHERE status = 'refunded') AS refunded
+FROM orders
+GROUP BY customer_id;
+```
+
+## Gotchas
+
+- **The columns are hard-coded.** You have to know the values in advance. Dynamic
+  pivots need generated SQL or a client-side crosstab.
+- **Unpivot** (columns back to rows) is the reverse: `UNION ALL` one `SELECT` per
+  source column, or `CROSS JOIN` a small values list.
+
+<Related>
+- [CASE](/docs/core/case) — the branching expression doing the work.
+- [GROUP BY](/docs/core/group-by) — sets the row grain of the pivot.
+- [SUM](/docs/functions/sum) / [COUNT](/docs/functions/count) — the aggregates wrapping the CASE.
+</Related>

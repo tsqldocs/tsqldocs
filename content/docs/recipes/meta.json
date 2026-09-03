@@ -1,0 +1,12 @@
+{
+  "title": "Recipes",
+  "pages": [
+    "index",
+    "top-n-per-group",
+    "deduplicate",
+    "rows-missing-in-another-table",
+    "pivot",
+    "gaps-and-islands",
+    "running-totals"
+  ]
+}

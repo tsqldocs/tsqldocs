@@ -1,0 +1,77 @@
+---
+title: Gaps and islands
+description: Find unbroken runs of consecutive values ("islands") and the holes between them ("gaps") — login streaks, missing invoice numbers, contiguous date ranges.
+---
+
+## The problem
+
+You have a sequence — dates, integers, IDs — and you need to group the
+**consecutive** stretches, or find where the sequence skips.
+
+## The trick
+
+For a run of consecutive values, `value − ROW_NUMBER()` is **constant**. When the
+sequence jumps, that difference jumps too. Group by the difference and each group
+is one island.
+
+## Islands: contiguous stretches
+
+`monthly_revenue` has months `2026-01 … 2026-04` with no gap, so it's one island.
+This finds the start, end, and length of every run of consecutive `order_id`s per
+customer:
+
+<SqlRunner query={`WITH n AS (
+  SELECT
+    customer_id,
+    order_id,
+    order_id - ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_id) AS grp
+  FROM orders
+)
+SELECT
+  customer_id,
+  MIN(order_id) AS run_start,
+  MAX(order_id) AS run_end,
+  COUNT(*)      AS run_length
+FROM n
+GROUP BY customer_id, grp
+ORDER BY customer_id, run_start;`} />
+
+## Gaps: what's missing
+
+Compare each value to the previous one with `LAG`; a jump greater than 1 is a gap:
+
+<SqlRunner query={`WITH n AS (
+  SELECT order_id,
+    LAG(order_id) OVER (ORDER BY order_id) AS prev_id
+  FROM orders
+)
+SELECT prev_id + 1 AS gap_start, order_id - 1 AS gap_end
+FROM n
+WHERE order_id - prev_id > 1;`} />
+
+(The seed `order_id`s are 101–111 with no gaps, so this returns nothing — delete a
+row in your head and it would.)
+
+## Dates instead of integers
+
+Same idea, but subtract a **row number of days** so the units line up:
+
+```sql
+SELECT user_id, MIN(login_date) AS streak_start, MAX(login_date) AS streak_end,
+       COUNT(*) AS days
+FROM (
+  SELECT user_id, login_date,
+    date(login_date, '-' ||
+      ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY login_date) || ' days') AS grp
+  FROM logins
+) t
+GROUP BY user_id, grp;
+```
+
+Postgres: `login_date - (ROW_NUMBER() OVER (...))::int` gives the same anchor date.
+
+<Related>
+- [ROW_NUMBER](/docs/functions/row_number) — the counter that makes the difference constant.
+- [LAG / LEAD](/docs/windows/lag-lead) — comparing each row to its neighbour for the gap version.
+- [Running totals](/docs/recipes/running-totals) — another "look at the neighbouring rows" pattern.
+</Related>

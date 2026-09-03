@@ -1,0 +1,55 @@
+---
+title: Rows missing in another table
+description: The anti-join — customers with no orders, products never sold, records that failed to sync.
+---
+
+## The problem
+
+You want the rows in table A that have **no** match in table B. "Which customers
+have never ordered?" "Which products have zero sales?"
+
+## The pattern: LEFT JOIN … IS NULL
+
+Join, then keep only the rows where the right side came back empty.
+
+<SqlRunner query={`SELECT c.customer_id, c.name, c.country
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.customer_id
+WHERE o.order_id IS NULL;`} />
+
+Test the **right table's** column for `NULL` — ideally a non-nullable one like its
+primary key, so a legitimately-null column doesn't fake a "no match".
+
+## The pattern: NOT EXISTS
+
+Usually the clearest, and the optimiser likes it:
+
+<SqlRunner query={`SELECT c.customer_id, c.name
+FROM customers c
+WHERE NOT EXISTS (
+  SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id
+);`} />
+
+## The pattern: NOT IN (careful)
+
+<SqlRunner query={`SELECT customer_id, name
+FROM customers
+WHERE customer_id NOT IN (SELECT customer_id FROM orders);`} />
+
+`NOT IN` is a trap: **if the subquery returns a single `NULL`, the whole result is
+empty.** `NOT EXISTS` doesn't have this problem. Only reach for `NOT IN` when the
+subquery column is guaranteed non-null.
+
+## Which to use
+
+| | Handles NULLs safely | Readable | Usually fastest |
+| --- | --- | --- | --- |
+| `LEFT JOIN … IS NULL` | yes (test the PK) | ok | yes |
+| `NOT EXISTS` | **yes** | **yes** | **yes** |
+| `NOT IN` | **no** | yes | varies |
+
+<Related>
+- [LEFT JOIN](/docs/joins/left-join) — the join this pattern is built on.
+- [WHERE](/docs/core/where) — why `NULL` in a predicate is `UNKNOWN`, not `FALSE`.
+- [NULL handling](/docs/core/nulls) — the three-valued logic behind the `NOT IN` trap.
+</Related>
