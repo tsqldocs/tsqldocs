@@ -1,0 +1,29 @@
+---
+title: Query Doctor
+description: Paste a broken query and its error — get the root cause, a corrected query you can run, and how to avoid it next time.
+full: true
+---
+
+Paste the query that's misbehaving and the exact error message (or leave the
+error blank if it runs but the result is wrong). **Diagnose** opens the AI
+assistant with an answer grounded in these docs.
+
+<QueryDoctor />
+
+## What you get back
+
+1. **Root cause** — the actual reason, not just "syntax error near…".
+2. **A corrected query** — formatted, in a `sql` block, ready to paste into the
+   [playground](/docs/playground).
+3. **How to avoid it** — the rule or habit that prevents the class of bug, with
+   links to the relevant reference page.
+
+## Common ones it's good at
+
+- Aggregate / `GROUP BY` mismatches — *"column must appear in the GROUP BY clause"*
+- Using a `SELECT` alias in `WHERE` or `HAVING`
+- `LEFT JOIN` silently turned into an `INNER JOIN` by a `WHERE` filter
+- `NOT IN` returning nothing because the subquery has a `NULL`
+- Window function in `WHERE` (needs a subquery / CTE)
+- Ambiguous column names after a join
+- Integer division flooring to `0`

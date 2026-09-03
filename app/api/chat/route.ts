@@ -62,15 +62,40 @@ const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-/** System prompt, you can update it to provide more specific information */
 const systemPrompt = [
-  'You are an AI assistant for a documentation site.',
-  'Use the `search` tool to retrieve relevant docs context before answering when needed.',
-  'The `search` tool returns raw JSON results from documentation. Use those results to ground your answer and cite sources as markdown links using the document `url` field when available.',
-  'If you cannot find the answer in search results, say you do not know and suggest a better search query.',
+  'You are the SQL assistant for tsqldocs.com — a practical SQL reference with an',
+  'in-browser SQLite playground. Be precise, concise, and correctness-first.',
+  '',
+  'ALWAYS call the `search` tool before answering anything non-trivial, and ground',
+  'your answer in what it returns. Cite the pages you used as markdown links with',
+  "the document's `url` field, e.g. [Top N per group](/docs/recipes/top-n-per-group).",
+  'If search finds nothing relevant, say so and suggest a better query rather than guessing.',
+  '',
+  'When you give SQL:',
+  '- Put it in a ```sql fenced block, formatted to read well.',
+  '- Prefer standard SQL; call out where engines differ (Postgres / MySQL / SQL Server / SQLite).',
+  '- Explain *why*, not just *what* — the failure mode, the gotcha, the safer form.',
+  '',
+  'The playground database has these tables the reader can run queries against:',
+  '  customers(customer_id, name, country)',
+  '  orders(order_id, customer_id, order_date, amount, status, cancelled_at)',
+  '  employees(employee_id, name, department_id, salary)',
+  '  product_sales(product_id, category_id, product_name, sales)',
+  '  monthly_revenue(month, revenue)',
+  'When it helps, write examples against these so the reader can paste and run them.',
+  '',
+  'If the user pastes a broken query and an error message, diagnose the root cause',
+  'first, then give a corrected query they can run as-is, then note how to avoid it.',
 ].join('\n');
 
 export async function POST(req: Request, ctx: RouteContext<"/api/chat">) {
+  if (!process.env.OPENROUTER_API_KEY) {
+    return Response.json(
+      { error: 'AI is not configured: OPENROUTER_API_KEY is missing on the server.' },
+      { status: 503 },
+    );
+  }
+
   const reqJson = await req.json();
 
   const result = streamText({
@@ -95,7 +120,17 @@ export async function POST(req: Request, ctx: RouteContext<"/api/chat">) {
   });
 
   return createUIMessageStreamResponse({
-    stream: toUIMessageStream({ stream: result.stream }),
+    stream: toUIMessageStream({
+      stream: result.stream,
+      // Surface the real reason instead of the SDK's generic "An error occurred."
+      onError: (error) => {
+        console.error('[api/chat]', error);
+        if (error == null) return 'Unknown error';
+        if (typeof error === 'string') return error;
+        if (error instanceof Error) return error.message;
+        return JSON.stringify(error);
+      },
+    }),
   });
 }
 
