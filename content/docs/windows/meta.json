@@ -2,6 +2,7 @@
   "title": "Window functions",
   "pages": [
     "running-total",
+    "frames",
     "lag-lead",
     "ntile"
   ]

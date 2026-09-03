@@ -1,0 +1,80 @@
+---
+title: Window frames
+description: ROWS, RANGE, and GROUPS — the BETWEEN clause that decides which rows a window aggregate actually sees.
+---
+
+## What a frame is
+
+Inside `OVER (…)`, after `PARTITION BY` and `ORDER BY`, the **frame** narrows the
+window to a slice of rows *relative to the current row*.
+
+```sql
+func(...) OVER (
+  ORDER BY sort_key
+  { ROWS | RANGE | GROUPS } BETWEEN <start> AND <end>
+)
+```
+
+`<start>` / `<end>` are one of: `UNBOUNDED PRECEDING`, `n PRECEDING`,
+`CURRENT ROW`, `n FOLLOWING`, `UNBOUNDED FOLLOWING`.
+
+## The default frame is a running total
+
+When you write `ORDER BY` in a window **and no frame**, you get
+`RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` — everything from the start
+through the current row. That's why a bare `SUM(x) OVER (ORDER BY …)` accumulates:
+
+<SqlRunner query={`SELECT month, revenue,
+  SUM(revenue) OVER (ORDER BY month) AS running_total
+FROM monthly_revenue
+ORDER BY month;`} />
+
+With **no `ORDER BY` at all**, the default is the whole partition — that's how
+`SUM(x) OVER ()` gives a grand total on every row.
+
+## ROWS — a fixed count of physical rows
+
+"Current row and the two before it" — a 3-row moving window:
+
+<SqlRunner query={`SELECT month, revenue,
+  ROUND(AVG(revenue) OVER (
+    ORDER BY month
+    ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+  ), 1) AS avg_3mo,
+  SUM(revenue) OVER (
+    ORDER BY month
+    ROWS BETWEEN CURRENT ROW AND 1 FOLLOWING
+  ) AS this_plus_next
+FROM monthly_revenue
+ORDER BY month;`} />
+
+## RANGE — rows with equal ORDER BY values are peers
+
+`RANGE` frames are defined by *value*, not position. `RANGE BETWEEN CURRENT ROW
+AND CURRENT ROW` includes **every row tied on the `ORDER BY` key**, not just one.
+This is why `RANK()` and the default running total lump ties together.
+
+`RANGE n PRECEDING` also means "values within n of the current value" — only valid
+with a single numeric or date `ORDER BY` column in most engines.
+
+## GROUPS — peer groups as the unit
+
+`GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW` = the current peer group plus the one
+before it. Useful when you want "the previous distinct value's rows" regardless of
+how many there are. (Postgres 11+, SQLite 3.28+; not in MySQL/SQL Server.)
+
+## Gotchas
+
+- **`ROWS` is what you usually want** for an N-row moving window. Reaching for the
+  default (or `RANGE`) with duplicate sort keys silently includes peers.
+- **`FIRST_VALUE` / `LAST_VALUE` need a frame.** `LAST_VALUE(x) OVER (ORDER BY k)`
+  returns the current row's value because the default frame ends at `CURRENT ROW`.
+  Add `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`.
+- **`RANK`, `ROW_NUMBER`, `LAG`, `LEAD`** ignore the frame — it only affects
+  aggregate-style window functions.
+
+<Related>
+- [Running totals & moving averages](/docs/recipes/running-totals) — frames in practice.
+- [LAG / LEAD](/docs/windows/lag-lead) — neighbour access, unaffected by the frame.
+- [Window functions](/docs/windows) — partitions and ordering, the parts before the frame.
+</Related>

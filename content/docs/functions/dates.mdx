@@ -1,0 +1,83 @@
+---
+title: Dates & times
+description: Truncate, extract, add intervals, and bucket by period — with the dialect differences that trip everyone up.
+---
+
+<Callout type="warn">
+Date handling is the **least portable** part of SQL. The concepts below are
+universal; the function names are not. The runnable examples use SQLite
+(`date()`, `strftime()`); the Postgres / other equivalents are noted inline.
+</Callout>
+
+## Now
+
+| | |
+| --- | --- |
+| Current date | `CURRENT_DATE` (standard) · `date('now')` (SQLite) |
+| Current timestamp | `CURRENT_TIMESTAMP` · `now()` (Postgres) · `GETDATE()` (SQL Server) |
+
+## Bucket by period — DATE_TRUNC
+
+Group events into months, weeks, days. This is how you build time series.
+
+<SqlRunner query={`SELECT
+  strftime('%Y-%m', order_date) AS month,
+  COUNT(*)     AS orders,
+  SUM(amount)  AS revenue
+FROM orders
+GROUP BY month
+ORDER BY month;`} />
+
+Postgres: `date_trunc('month', order_date)`. SQL Server: `DATETRUNC(month, order_date)` (2022+) or `DATEADD(month, DATEDIFF(month, 0, order_date), 0)`.
+
+## Pull out a field — EXTRACT
+
+<SqlRunner query={`SELECT
+  order_id,
+  order_date,
+  CAST(strftime('%m', order_date) AS INTEGER) AS month_num,
+  strftime('%w', order_date)                  AS weekday_0sun
+FROM orders
+ORDER BY order_id
+LIMIT 5;`} />
+
+Standard: `EXTRACT(MONTH FROM order_date)`, `EXTRACT(DOW FROM order_date)`.
+
+## Date arithmetic
+
+<SqlRunner query={`SELECT
+  order_id,
+  order_date,
+  date(order_date, '+7 days')   AS due,
+  date(order_date, 'start of month') AS month_start
+FROM orders
+ORDER BY order_id
+LIMIT 5;`} />
+
+- Postgres: `order_date + INTERVAL '7 days'`, `date_trunc('month', order_date)`.
+- MySQL: `DATE_ADD(order_date, INTERVAL 7 DAY)`.
+- SQL Server: `DATEADD(day, 7, order_date)`.
+
+## Difference between two dates
+
+<SqlRunner query={`SELECT
+  julianday('2026-03-01') - julianday('2026-01-05') AS days_between;`} />
+
+Standard-ish: `age(a, b)` / `a - b` (Postgres), `DATEDIFF(day, b, a)` (SQL Server),
+`DATEDIFF(a, b)` (MySQL, in days).
+
+## Gotchas
+
+- **Strings that look like dates aren't dates.** `'2026-13-99'` compares fine as
+  text and blows up as a date. Store dates in a real date/timestamp type.
+- **Time zones.** `TIMESTAMP` vs `TIMESTAMPTZ` in Postgres; store UTC, convert at
+  the edge.
+- **Half-open ranges beat `BETWEEN`** for timestamps: `ts >= '2026-01-01' AND ts <
+  '2026-02-01'` — `BETWEEN` includes the upper bound and misses `23:59:59.999`.
+- **Week start** differs by locale (Sunday vs Monday) and by function.
+
+<Related>
+- [WHERE](/docs/core/where) — half-open range filtering for timestamps.
+- [Running totals & moving averages](/docs/recipes/running-totals) — time series built on monthly buckets.
+- [GROUP BY](/docs/core/group-by) — grouping by a truncated date.
+</Related>

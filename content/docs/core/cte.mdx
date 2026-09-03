@@ -1,0 +1,79 @@
+---
+title: CTE (WITH)
+description: Name a subquery so a query reads top to bottom instead of inside out — plus recursive CTEs for hierarchies and series.
+---
+
+## Syntax
+
+```sql
+WITH name AS (
+  SELECT ...
+)
+SELECT ... FROM name ...;
+```
+
+A CTE is a subquery with a name, defined before the query that uses it. Chain
+several with commas.
+
+## Readability
+
+The same logic as a nested subquery, but you read it in the order it runs:
+
+<SqlRunner query={`WITH dept_avg AS (
+  SELECT department_id, AVG(salary) AS avg_salary
+  FROM employees
+  GROUP BY department_id
+)
+SELECT e.name, e.department_id, e.salary, ROUND(d.avg_salary) AS dept_avg
+FROM employees e
+JOIN dept_avg d ON d.department_id = e.department_id
+WHERE e.salary > d.avg_salary
+ORDER BY e.department_id;`} />
+
+## Multiple CTEs, each building on the last
+
+<SqlRunner query={`WITH paid AS (
+  SELECT customer_id, SUM(amount) AS spent
+  FROM orders WHERE status = 'paid'
+  GROUP BY customer_id
+),
+ranked AS (
+  SELECT customer_id, spent,
+    RANK() OVER (ORDER BY spent DESC) AS rnk
+  FROM paid
+)
+SELECT c.name, r.spent, r.rnk
+FROM ranked r
+JOIN customers c ON c.customer_id = r.customer_id
+ORDER BY r.rnk;`} />
+
+## Recursive CTEs
+
+For hierarchies (org charts, categories, threads) and generated series. The
+`UNION ALL` has a base case and a step that refers back to the CTE:
+
+<SqlRunner query={`WITH RECURSIVE months(n, label) AS (
+  SELECT 1, '2026-01'
+  UNION ALL
+  SELECT n + 1, printf('2026-%02d', n + 1)
+  FROM months
+  WHERE n < 6
+)
+SELECT * FROM months;`} />
+
+Every recursive CTE needs a stop condition (`WHERE n < 6`) or it runs forever.
+
+## Gotchas
+
+- **Not automatically faster.** A CTE referenced once usually inlines like a
+  subquery. Referenced many times, the engine *may* materialise it once — or may
+  re-run it each time. Postgres ≤ 11 always materialised (an "optimisation
+  fence"); 12+ inlines unless you write `AS MATERIALIZED`.
+- **Scope.** A CTE is visible only to the statement it's attached to.
+- **`RECURSIVE` keyword** is required in Postgres/SQLite/MySQL; SQL Server omits it.
+
+<Related>
+- [Subqueries](/docs/core/subqueries) — the un-named version.
+- [Gaps and islands](/docs/recipes/gaps-and-islands) — CTEs make these readable.
+- [Set operations](/docs/core/set-operations) — `UNION ALL`, the join in a recursive CTE.
+</Related>

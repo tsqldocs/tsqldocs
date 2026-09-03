@@ -1,0 +1,61 @@
+---
+title: Subqueries
+description: Queries nested inside queries — in SELECT, FROM, and WHERE — and when a correlated one quietly runs per row.
+---
+
+## Four places a subquery can go
+
+### In `WHERE` — a set to test against
+
+<SqlRunner query={`SELECT name, salary
+FROM employees
+WHERE salary > (SELECT AVG(salary) FROM employees);`} />
+
+The subquery here returns one value (a **scalar subquery**). With `IN` / `NOT IN`
+/ `EXISTS` it returns a set.
+
+### In `FROM` — a derived table
+
+<SqlRunner query={`SELECT department_id, AVG(salary) AS dept_avg
+FROM (SELECT * FROM employees WHERE salary > 100000) high_earners
+GROUP BY department_id;`} />
+
+Most engines require the derived table to be **aliased** (`high_earners`).
+
+### In `SELECT` — a per-row value
+
+<SqlRunner query={`SELECT
+  name,
+  salary,
+  salary - (SELECT AVG(salary) FROM employees e2 WHERE e2.department_id = e.department_id) AS vs_dept_avg
+FROM employees e
+ORDER BY department_id, salary DESC;`} />
+
+## Correlated vs uncorrelated
+
+- **Uncorrelated** — the subquery doesn't reference the outer query. It runs once.
+- **Correlated** — it references an outer column (`e.department_id` above). Logically
+  it runs **once per outer row**. Optimisers often rewrite these into joins, but
+  not always — a correlated subquery over a big table is a classic slow query.
+
+`EXISTS` is almost always correlated, and usually the clearest way to ask "is
+there a matching row?":
+
+<SqlRunner query={`SELECT c.name
+FROM customers c
+WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id AND o.amount > 500);`} />
+
+## Gotchas
+
+- **Scalar subqueries must return 0 or 1 rows.** Two rows is a runtime error;
+  zero rows yields `NULL`.
+- **`NOT IN` + `NULL`.** If the subquery returns any `NULL`, `NOT IN` yields no
+  rows. Use `NOT EXISTS`. See [rows missing in another table](/docs/recipes/rows-missing-in-another-table).
+- **A [CTE](/docs/core/cte) is the same thing, named.** Reach for one when a
+  subquery is reused or the nesting gets hard to read.
+
+<Related>
+- [CTE (WITH)](/docs/core/cte) — subqueries lifted out and named.
+- [WHERE](/docs/core/where) — where IN / EXISTS / scalar comparisons live.
+- [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — the anti-join patterns.
+</Related>

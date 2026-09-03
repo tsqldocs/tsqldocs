@@ -11,6 +11,8 @@
     "avg",
     "min-max",
     "---Scalar---",
-    "coalesce"
+    "coalesce",
+    "---Date & time---",
+    "dates"
   ]
 }

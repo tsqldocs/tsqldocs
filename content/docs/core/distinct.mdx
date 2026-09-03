@@ -1,0 +1,62 @@
+---
+title: DISTINCT
+description: Remove duplicate rows from a result — and understand why it applies to the whole SELECT list, not one column.
+---
+
+## What it does
+
+`SELECT DISTINCT` collapses rows that are identical **across every column in the
+select list** into one.
+
+```sql
+SELECT DISTINCT status FROM orders;
+```
+
+<SqlRunner query={`SELECT DISTINCT status FROM orders;`} />
+
+## It's not per-column
+
+`DISTINCT` is not a function you apply to one column — it's a modifier on the
+whole row. This returns every distinct **pair**, not distinct customers:
+
+<SqlRunner query={`SELECT DISTINCT customer_id, status FROM orders ORDER BY customer_id;`} />
+
+If you want one row per customer, you need `GROUP BY customer_id` (and decide what
+to do with `status`), not `DISTINCT`.
+
+## COUNT(DISTINCT …)
+
+Counting unique values of one column is a separate thing — it goes *inside*
+`COUNT`:
+
+<SqlRunner query={`SELECT
+  COUNT(*)                     AS rows,
+  COUNT(DISTINCT customer_id)  AS distinct_customers,
+  COUNT(DISTINCT status)       AS distinct_statuses
+FROM orders;`} />
+
+## DISTINCT ON (Postgres)
+
+Postgres has `DISTINCT ON (expr)` — keep the first row per `expr` after ordering.
+It's a shortcut for the [top-N-per-group](/docs/recipes/top-n-per-group) pattern:
+
+```sql
+SELECT DISTINCT ON (customer_id) customer_id, order_id, amount
+FROM orders
+ORDER BY customer_id, order_date DESC;
+```
+
+## Gotchas
+
+- **`DISTINCT` sorts or hashes the whole result** to find duplicates — it's not
+  free on large sets.
+- **It can mask a join bug.** If a join fans out and you "fix" the row count with
+  `DISTINCT`, you've hidden the real problem instead of solving it.
+- **`NULL`s are treated as equal** here (unlike in `WHERE`) — two rows that are
+  `NULL` in the same column count as duplicates.
+
+<Related>
+- [GROUP BY](/docs/core/group-by) — for "one row per key" while keeping other columns.
+- [COUNT](/docs/functions/count) — where `COUNT(DISTINCT col)` lives.
+- [Deduplicate rows](/docs/recipes/deduplicate) — keep one row per key when the whole row isn't identical.
+</Related>

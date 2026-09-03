@@ -1,0 +1,66 @@
+---
+title: LIMIT / OFFSET
+description: Cap the number of rows returned — and page through results without OFFSET's downsides.
+---
+
+## Syntax
+
+```sql
+SELECT ... ORDER BY ... LIMIT count [OFFSET skip];   -- Postgres, MySQL, SQLite
+SELECT ... ORDER BY ... FETCH FIRST count ROWS ONLY; -- SQL standard, incl. Oracle 12c+
+SELECT TOP (count) ... ORDER BY ...;                 -- SQL Server
+```
+
+## Always pair it with ORDER BY
+
+`LIMIT` without `ORDER BY` returns *some* rows — which ones is undefined and can
+change between runs.
+
+<SqlRunner query={`SELECT customer_id, order_id, amount
+FROM orders
+ORDER BY amount DESC, order_id
+LIMIT 3;`} />
+
+## OFFSET pagination
+
+`LIMIT 20 OFFSET 40` skips the first 40 rows and returns the next 20 — page 3.
+
+<SqlRunner query={`SELECT order_id, amount
+FROM orders
+ORDER BY order_id
+LIMIT 4 OFFSET 4;`} />
+
+Two problems with `OFFSET` on real data:
+
+- **It gets slower the deeper you page.** The engine still reads and discards
+  every skipped row — `OFFSET 100000` reads 100,000 rows.
+- **Rows shift under you.** If a row is inserted or deleted while a user pages,
+  they see a duplicate or miss one.
+
+## Keyset (cursor) pagination
+
+Instead of an offset, remember the last row's sort key and ask for rows *after*
+it:
+
+```sql
+-- first page
+SELECT * FROM orders ORDER BY order_id LIMIT 20;
+
+-- next page: pass the last order_id you saw
+SELECT * FROM orders WHERE order_id > 104 ORDER BY order_id LIMIT 20;
+```
+
+<SqlRunner query={`SELECT order_id, amount
+FROM orders
+WHERE order_id > 104
+ORDER BY order_id
+LIMIT 4;`} />
+
+Constant speed at any depth, and stable under inserts/deletes. The trade-off:
+no random page access — you can only go forward/back one page at a time. Use a
+compound key (`(created_at, id)`) when the sort column isn't unique.
+
+<Related>
+- [ORDER BY](/docs/core/order-by) — LIMIT is only meaningful over a deterministic order.
+- [Top N per group](/docs/recipes/top-n-per-group) — LIMIT can't do "top N per group"; use ROW_NUMBER.
+</Related>

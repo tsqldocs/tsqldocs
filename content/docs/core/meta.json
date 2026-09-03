@@ -3,8 +3,14 @@
   "pages": [
     "nulls",
     "where",
+    "distinct",
     "order-by",
+    "limit",
     "group-by",
-    "case"
+    "having",
+    "case",
+    "subqueries",
+    "cte",
+    "set-operations"
   ]
 }

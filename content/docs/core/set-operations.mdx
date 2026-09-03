@@ -1,0 +1,63 @@
+---
+title: Set operations
+description: Combine or compare the rows of two queries — UNION, INTERSECT, EXCEPT — and why UNION ALL is usually the one you want.
+---
+
+## The three operators
+
+| Operator | Returns |
+| --- | --- |
+| `UNION` | rows in **either** query, duplicates removed |
+| `UNION ALL` | rows in either query, **duplicates kept** |
+| `INTERSECT` | rows in **both** queries |
+| `EXCEPT` (`MINUS` in Oracle) | rows in the first query **but not** the second |
+
+Each side must have the **same number of columns** with compatible types. Column
+names come from the first query.
+
+## UNION ALL vs UNION
+
+<SqlRunner query={`SELECT customer_id FROM orders WHERE status = 'paid'
+UNION ALL
+SELECT customer_id FROM orders WHERE amount > 100;`} />
+
+Now the deduplicating version:
+
+<SqlRunner query={`SELECT customer_id FROM orders WHERE status = 'paid'
+UNION
+SELECT customer_id FROM orders WHERE amount > 100
+ORDER BY customer_id;`} />
+
+**`UNION` sorts or hashes the combined result to remove duplicates** — real cost
+on large sets. If you know the two sides can't overlap (or you don't care about
+dupes), use `UNION ALL`.
+
+## INTERSECT and EXCEPT
+
+<SqlRunner query={`SELECT customer_id FROM orders WHERE status = 'paid'
+INTERSECT
+SELECT customer_id FROM orders WHERE status = 'refunded';`} />
+
+<SqlRunner query={`SELECT customer_id FROM customers
+EXCEPT
+SELECT customer_id FROM orders;`} />
+
+That last one is an anti-join — customers with no orders. `NOT EXISTS` is usually
+clearer; see [rows missing in another table](/docs/recipes/rows-missing-in-another-table).
+
+## Gotchas
+
+- **`ORDER BY` goes once, at the very end** — it orders the whole combined result,
+  not one side.
+- **`INTERSECT` / `EXCEPT` dedupe by default** too; `... ALL` variants (Postgres)
+  keep multiplicity.
+- **Type mismatches** are resolved by the engine's coercion rules — an `int` and a
+  `text` column stacked can produce surprising results or an error.
+- **Not all engines have `INTERSECT`/`EXCEPT`** (older MySQL). Emulate with
+  `IN` / `NOT EXISTS`.
+
+<Related>
+- [CTE (WITH)](/docs/core/cte) — recursive CTEs are built on `UNION ALL`.
+- [DISTINCT](/docs/core/distinct) — the same dedup `UNION` does, on one query.
+- [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — `EXCEPT` vs `NOT EXISTS`.
+</Related>

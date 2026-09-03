@@ -1,0 +1,54 @@
+---
+title: HAVING
+description: Filter groups after aggregation — the clause for conditions WHERE can't express.
+---
+
+## WHERE filters rows, HAVING filters groups
+
+- `WHERE` runs **before** `GROUP BY` — it can't see aggregates.
+- `HAVING` runs **after** `GROUP BY` — it filters the grouped rows, and it *can*
+  use aggregates.
+
+```sql
+SELECT customer_id, SUM(amount) AS total
+FROM orders
+GROUP BY customer_id
+HAVING SUM(amount) > 300;
+```
+
+<SqlRunner query={`SELECT customer_id, COUNT(*) AS orders, SUM(amount) AS total
+FROM orders
+GROUP BY customer_id
+HAVING SUM(amount) > 300
+ORDER BY total DESC;`} />
+
+## Use both — filter early, then filter groups
+
+`WHERE` shrinks the input before grouping (cheaper); `HAVING` filters the
+aggregated result.
+
+<SqlRunner query={`SELECT customer_id, COUNT(*) AS paid_orders, SUM(amount) AS paid_total
+FROM orders
+WHERE status = 'paid'
+GROUP BY customer_id
+HAVING COUNT(*) >= 2;`} />
+
+Putting `status = 'paid'` in `HAVING` would work here only because there's no
+aggregate on it — but it would scan and group rows you could have dropped first.
+Row-level conditions belong in `WHERE`.
+
+## Gotchas
+
+- **`HAVING` without `GROUP BY`** treats the whole result as one group:
+  `SELECT SUM(amount) FROM orders HAVING SUM(amount) > 1000` returns one row or none.
+- **Select-list aliases** usually aren't visible in `HAVING` (same as `WHERE`) —
+  repeat the expression: `HAVING SUM(amount) > 300`, not `HAVING total > 300`.
+  Postgres and SQLite allow the alias; SQL Server and Oracle don't.
+- **Non-aggregated columns** in `HAVING` must be in `GROUP BY`, just like the
+  select list.
+
+<Related>
+- [GROUP BY](/docs/core/group-by) — sets the groups HAVING filters.
+- [WHERE](/docs/core/where) — the row-level filter that runs first.
+- [Pivot without PIVOT](/docs/recipes/pivot) — conditional aggregation, often paired with HAVING.
+</Related>
