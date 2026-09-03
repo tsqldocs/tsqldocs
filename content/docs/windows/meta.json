@@ -1,6 +1,5 @@
 {
   "title": "Window functions",
-  "root": true,
   "pages": [
     "running-total",
     "lag-lead",

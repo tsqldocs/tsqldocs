@@ -1,6 +1,5 @@
 {
   "title": "Functions",
-  "root": true,
   "pages": [
     "---Window functions---",
     "row_number",

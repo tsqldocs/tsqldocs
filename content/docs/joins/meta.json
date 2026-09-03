@@ -1,6 +1,5 @@
 {
   "title": "Joins",
-  "root": true,
   "pages": [
     "inner-join",
     "left-join",
