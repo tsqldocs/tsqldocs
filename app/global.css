@@ -88,6 +88,21 @@
   transform: scaleX(1);
 }
 
+/* Body-text links: no static underline, one that rolls out from the left on
+   hover (a background-image "underline" grown via background-size). */
+.prose :is(p, li, td) a {
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0% 1.5px;
+  padding-bottom: 1px;
+  transition: background-size 200ms ease;
+}
+.prose :is(p, li, td) a:hover {
+  background-size: 100% 1.5px;
+}
+
 html {
   scrollbar-gutter: stable;
 }
