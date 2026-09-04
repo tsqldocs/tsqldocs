@@ -3,13 +3,16 @@
   "root": true,
   "pages": [
     "index",
+    "---Reference---",
     "sql-reference",
     "core",
     "functions",
     "joins",
     "windows",
+    "---Writing & transactions---",
     "dml",
     "transactions",
+    "---Practical---",
     "recipes",
     "playground",
     "checklist"
