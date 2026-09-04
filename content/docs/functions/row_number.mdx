@@ -1,6 +1,6 @@
 ---
 title: ROW_NUMBER
-description: Assign a unique sequential number to each row within a partition.
+description: Assign a unique sequential number to each row within a partition — the building block for top-N-per-group and pagination.
 ---
 
 ## Syntax
@@ -12,44 +12,73 @@ ROW_NUMBER() OVER (
 )
 ```
 
+<Parameters>
+  <Param name="PARTITION BY" type="expression, …">
+    Optional. Restarts numbering per group. Without it, the whole result set is one partition.
+  </Param>
+  <Param name="ORDER BY" type="expression [ASC|DESC], …" required>
+    Decides numbering order. Ties are broken arbitrarily unless this includes a unique column.
+  </Param>
+</Parameters>
+
 ## What it does
 
-`ROW_NUMBER()` returns a unique integer for each row in the result set after ordering. It is commonly used for pagination, ranking, and selecting the first row per group.
+`ROW_NUMBER()` returns a unique integer for each row in the result set, counting
+up from 1 within each partition. Unlike `RANK`/`DENSE_RANK`, ties never share a
+number — the engine still has to put one of them first.
 
-## Important behavior
+## Compare the three ranking functions
 
-- It always returns a unique value per row within the partition.
-- If two rows tie on the `ORDER BY` values, the engine may still choose an arbitrary order unless you add a stable tiebreaker.
-- If you want deterministic results, add a unique secondary sort column.
+| salary | ROW_NUMBER | RANK | DENSE_RANK |
+| --- | --- | --- | --- |
+| 90,000 | 1 | 1 | 1 |
+| 90,000 | 2 | 1 | 1 |
+| 80,000 | 3 | 3 ← gap | 2 ← no gap |
+| 70,000 | 4 | 4 | 3 |
+
+Reach for `ROW_NUMBER` when you need **exactly one row** per key — deduplication,
+"latest row per customer," pagination — not when ties should be reported as equal.
 
 ## Example
 
-```sql
-SELECT
+<SqlRunner query={`SELECT
   customer_id,
   order_date,
+  order_id,
   ROW_NUMBER() OVER (
     PARTITION BY customer_id
     ORDER BY order_date DESC, order_id DESC
   ) AS row_num
-FROM orders;
-```
+FROM orders
+ORDER BY customer_id, row_num;`} />
 
-## Common pitfalls
+## Ties are not stable without a tiebreaker
 
-### Ties are not guaranteed to be stable
+<SqlRunner query={`SELECT
+  product_name,
+  category_id,
+  sales,
+  ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY sales DESC) AS rn
+FROM product_sales
+ORDER BY category_id, rn;`} />
 
-```sql
-SELECT
-  product_id,
-  ROW_NUMBER() OVER (
-    PARTITION BY category_id
-    ORDER BY sales DESC
-  ) AS rank_in_category
-FROM sales;
-```
+Category 1 has two products tied at `400` sales. `ORDER BY sales DESC` alone
+doesn't say which gets `rn = 1` — that pick can change between runs or engine
+versions. Add a deterministic secondary key (`ORDER BY sales DESC, product_id`)
+if it matters which one you get.
 
-If multiple rows have the same sales value, the order between them is not guaranteed unless you add a secondary column.
+## Filtering by row number
+
+`ROW_NUMBER()` can't go in `WHERE` — wrap the query in a subquery or CTE and
+filter the outer layer. This is the core mechanic behind
+[top N per group](/docs/recipes/top-n-per-group) and
+[deduplicate rows](/docs/recipes/deduplicate) (`WHERE rn <= n` / `WHERE rn = 1`).
+
+<Related>
+- [RANK](/docs/functions/rank) — ties share a rank, then skip ahead.
+- [DENSE_RANK](/docs/functions/dense_rank) — ties share a rank, no gap afterwards.
+- [Deduplicate rows](/docs/recipes/deduplicate) — ROW_NUMBER with `rn = 1` to keep one row per key.
+</Related>
 
 ## Safety check before shipping
 
