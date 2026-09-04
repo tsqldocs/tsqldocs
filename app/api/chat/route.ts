@@ -13,11 +13,12 @@ import { Document, type DocumentData } from 'flexsearch';
 import { ChatUIMessage, SearchTool } from '../../../components/ai/search';
 import { checkRateLimit } from '@/lib/rate-limit';
 
-// Bounds worst-case Anthropic spend from a bot or a loop, while being
-// generous enough that a real person debugging queries won't hit it in one
-// session. No subscriber tier here (unlike xlsdocs) — just one shared cap.
-const CHAT_RATE_LIMIT = 30;
-const CHAT_RATE_WINDOW_SECONDS = 60 * 60;
+// Deliberately tight, not just a cost backstop: there's no paid tier to
+// upgrade into yet, so this is the whole free allowance. Revisit once a
+// subscription exists (xlsdocs' shape: a low shared free limit + a much
+// higher per-subscriber one, gated on a checkSubscriber() check).
+const CHAT_RATE_LIMIT = 3;
+const CHAT_RATE_WINDOW_SECONDS = 60 * 60 * 24;
 
 interface CustomDocument extends DocumentData {
   url: string;
@@ -106,7 +107,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/chat">) {
   const { allowed } = await checkRateLimit(req, 'chat', CHAT_RATE_LIMIT, CHAT_RATE_WINDOW_SECONDS);
   if (!allowed) {
     return Response.json(
-      { error: "You've hit the hourly limit for AI questions — try again in a bit." },
+      { error: "You've hit today's free limit for AI questions — try again tomorrow." },
       { status: 429 },
     );
   }
