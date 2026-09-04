@@ -9,6 +9,7 @@
     "joins",
     "windows",
     "dml",
+    "transactions",
     "recipes",
     "playground",
     "checklist"

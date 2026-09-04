@@ -1,0 +1,83 @@
+---
+title: Isolation levels
+description: Read Uncommitted through Serializable — the anomalies each one prevents, and what each engine defaults to.
+---
+
+An isolation level controls what one transaction can see of another
+transaction's *uncommitted* or concurrently-changing work. This is a
+single-connection playground, so none of this is demonstrable live — the
+comparisons below are the reference instead.
+
+## The three anomalies
+
+| Anomaly | What happens |
+| --- | --- |
+| **Dirty read** | You read a row another transaction changed but hasn't committed yet — then it rolls back, and you'd read a value that never actually existed. |
+| **Non-repeatable read** | You read the same row twice in one transaction and get two different values, because another transaction committed a change to it in between. |
+| **Phantom read** | You run the same filtered query twice in one transaction and get a different set of *rows*, because another transaction committed an insert or delete matching the filter in between. |
+
+## What each level prevents
+
+| Isolation level | Dirty read | Non-repeatable read | Phantom read |
+| --- | --- | --- | --- |
+| Read Uncommitted | possible | possible | possible |
+| Read Committed | prevented | possible | possible |
+| Repeatable Read | prevented | prevented | possible (allowed by the standard) |
+| Serializable | prevented | prevented | prevented |
+
+Higher isolation prevents more anomalies but forces more blocking — a
+`SERIALIZABLE` transaction can force concurrent transactions to wait, retry,
+or abort. It's a real tradeoff, not a strictly-better setting.
+
+## Each engine's default
+
+| Engine | Default level | Notes |
+| --- | --- | --- |
+| PostgreSQL | Read Committed | `SERIALIZABLE` available and fully standard-compliant (true serializability via SSI). |
+| MySQL (InnoDB) | Repeatable Read | Its Repeatable Read also prevents most phantom reads via next-key locking — stricter than the standard requires at this level. |
+| SQL Server | Read Committed | Also offers `READ COMMITTED SNAPSHOT` (row versioning instead of locking) as an alternative, not a stricter level. |
+| Oracle | Read Committed | Has no true dirty-read level; its own multiversioning means readers never block writers. |
+| SQLite | N/A (serialized) | One writer at a time, enforced by a database-level lock; readers see a consistent snapshot. No per-transaction level to set. |
+
+## Setting it
+
+```sql
+-- Postgres / MySQL (session- or transaction-scoped)
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+
+-- SQL Server
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+
+-- Oracle
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+```
+
+Set it before `BEGIN`/`START TRANSACTION` (or as part of it, depending on the
+engine) — it applies to the transaction that follows, not retroactively.
+
+## Gotchas
+
+- **"Repeatable Read" doesn't mean the same thing everywhere.** MySQL's
+  version blocks phantom reads for locking reads in practice; the ANSI
+  standard only requires it to block non-repeatable reads at that level.
+  Don't assume behavior transfers between engines just because the level
+  name matches.
+- **`SERIALIZABLE` isn't free.** It's implemented as either heavy locking or
+  optimistic conflict detection that aborts one of two conflicting
+  transactions, forcing a retry. Reach for it only when the anomaly it
+  prevents would actually cause a bug — not as a default-safe setting.
+- **Isolation level doesn't replace explicit locking.** `SELECT ... FOR
+  UPDATE` (or a similar hint) is still how you tell the engine "I intend to
+  change this row, block others from reading it for update too" — isolation
+  level alone controls visibility, not intent.
+
+<Related>
+- [BEGIN, COMMIT, ROLLBACK](/docs/transactions/basics) — the transaction these levels apply to.
+- [UPDATE](/docs/dml/update) — the "two concurrent updates to the same row" race mentioned there is exactly what isolation level and row locking govern.
+</Related>
+
+## Safety checklist
+
+- know your engine's default before assuming a stricter one is in effect
+- pick a level based on the specific anomaly you need to prevent, not the strictest one available
+- test under actual concurrency — anomalies that "never happen" in dev show up under production load

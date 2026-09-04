@@ -1,0 +1,25 @@
+---
+title: Transactions
+description: BEGIN, COMMIT, ROLLBACK, and the isolation levels that decide what concurrent transactions see of each other.
+---
+
+Every `INSERT`, `UPDATE`, and `DELETE` on the previous pages ran as its own
+implicit transaction. This section covers doing it on purpose — grouping
+several statements so they succeed or fail together, and controlling what
+one transaction can see of another one running at the same time.
+
+<Cards>
+  <Card title="BEGIN, COMMIT, ROLLBACK" description="Group statements into one all-or-nothing unit, and undo them before they're permanent." href="/docs/transactions/basics" />
+  <Card title="Isolation levels" description="Read Uncommitted through Serializable — the anomalies each one prevents, and each engine's default." href="/docs/transactions/isolation-levels" />
+</Cards>
+
+## Playground note
+
+The playground is one single-connection SQLite session, so it can't demonstrate
+two transactions running *concurrently* — that's what the isolation-levels page
+covers with static comparisons instead. What it can show live, and does: a
+`BEGIN … COMMIT` making changes permanent, and a `BEGIN … ROLLBACK` undoing
+them, against a scratch copy of a seed table so nothing else on the site is
+affected.
+
+<TryPlayground>Want to experiment freely? The playground is the same SQLite engine, no guardrails.</TryPlayground>

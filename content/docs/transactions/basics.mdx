@@ -1,0 +1,138 @@
+---
+title: BEGIN, COMMIT, ROLLBACK
+description: Group statements into one all-or-nothing unit, and undo them before they're permanent.
+---
+
+## Syntax
+
+```sql
+BEGIN;
+  -- one or more statements
+COMMIT;   -- make them permanent
+-- or:
+ROLLBACK; -- undo everything since BEGIN
+```
+
+<Parameters>
+  <Param name="BEGIN" type="statement" required>
+    Starts a transaction. Everything after it is staged, not permanent, until
+    a `COMMIT`. (Spelled `BEGIN TRANSACTION` on SQL Server, `START TRANSACTION`
+    on MySQL — `BEGIN` alone works on Postgres and SQLite.)
+  </Param>
+  <Param name="COMMIT" type="statement">
+    Makes every staged change permanent and visible to other connections.
+  </Param>
+  <Param name="ROLLBACK" type="statement">
+    Discards every staged change since `BEGIN` as if none of it happened.
+  </Param>
+  <Param name="SAVEPOINT name" type="statement">
+    A named point inside a transaction you can roll back to without undoing
+    the whole thing. `ROLLBACK TO name` then `RELEASE name` when done with it.
+  </Param>
+</Parameters>
+
+## Why: all-or-nothing
+
+A transfer between two accounts is the classic example: debit one row, credit
+another. If the process dies after the debit but before the credit, money
+just vanished. Wrapping both statements in one transaction means either both
+happen or neither does — there's no in-between state to observe.
+
+## ROLLBACK undoes everything since BEGIN
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_accounts;
+CREATE TABLE scratch_accounts AS SELECT customer_id, name, 0 AS balance FROM customers;
+
+BEGIN;
+UPDATE scratch_accounts SET balance = balance - 100 WHERE customer_id = 1;
+UPDATE scratch_accounts SET balance = balance + 100 WHERE customer_id = 2;
+ROLLBACK;
+
+SELECT customer_id, name, balance FROM scratch_accounts WHERE customer_id IN (1, 2);`} />
+
+Both balances are back to `0` — the `ROLLBACK` discarded both updates as one
+unit, exactly as if `BEGIN` had never run.
+
+## COMMIT makes it permanent
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_accounts2;
+CREATE TABLE scratch_accounts2 AS SELECT customer_id, name, 0 AS balance FROM customers;
+
+BEGIN;
+UPDATE scratch_accounts2 SET balance = balance - 100 WHERE customer_id = 1;
+UPDATE scratch_accounts2 SET balance = balance + 100 WHERE customer_id = 2;
+COMMIT;
+
+SELECT customer_id, name, balance FROM scratch_accounts2 WHERE customer_id IN (1, 2);`} />
+
+Same two statements, but `COMMIT` instead of `ROLLBACK` — the money actually
+moved, and net balance across both rows is still zero either way.
+
+## SAVEPOINT: rolling back part of a transaction
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_accounts3;
+CREATE TABLE scratch_accounts3 AS SELECT customer_id, name, 0 AS balance FROM customers;
+
+BEGIN;
+UPDATE scratch_accounts3 SET balance = balance + 50 WHERE customer_id = 1;
+
+SAVEPOINT before_risky_part;
+UPDATE scratch_accounts3 SET balance = balance - 9999 WHERE customer_id = 1;
+ROLLBACK TO before_risky_part;
+RELEASE before_risky_part;
+
+COMMIT;
+
+SELECT customer_id, name, balance FROM scratch_accounts3 WHERE customer_id = 1;`} />
+
+Balance is `50`, not `-9949` — the savepoint rolled back only the risky part.
+The first update and the `COMMIT` still went through. Useful for "try this,
+and undo just this part if it turns out wrong" inside a larger transaction
+you still want to keep otherwise.
+
+## When a statement inside a transaction fails
+
+```sql
+BEGIN;
+INSERT INTO accounts VALUES (3, 'New Co', 0);
+INSERT INTO accounts VALUES (3, 'Duplicate id', 0); -- fails: primary key violation
+COMMIT;
+```
+
+The second `INSERT` fails, but the transaction doesn't roll back on its own —
+most engines leave the session sitting inside an open, now-unusable
+transaction until something explicitly issues a `ROLLBACK`. Postgres is the
+strictest about this: any further statement in that session errors with
+*"current transaction is aborted"* until you roll back. Always have error
+handling that calls `ROLLBACK` on failure — don't assume the engine does it
+for you.
+
+## Gotchas
+
+- **Autocommit is the default.** Outside an explicit `BEGIN`, every statement
+  is its own transaction that commits immediately — including the `UPDATE`/
+  `DELETE` examples on the previous pages. `BEGIN` is what turns several
+  statements into one unit.
+- **DDL transactionality is engine-specific.** Postgres and SQLite can roll
+  back a `CREATE TABLE` or `ALTER TABLE` like any other statement. **MySQL
+  cannot** — DDL causes an implicit commit of whatever came before it, and
+  can't itself be rolled back. SQL Server is transactional for most DDL but
+  not all of it. Don't assume a schema change inside a transaction is undoable
+  everywhere.
+- **Open transactions hold locks.** A transaction left open — waiting on
+  something, or just forgotten — can block other connections from reading or
+  writing the same rows (or, on Postgres, prevent `VACUUM` from reclaiming
+  dead rows) for as long as it stays open. Keep transactions short.
+
+<Related>
+- [Isolation levels](/docs/transactions/isolation-levels) — what a transaction can see of another one running concurrently.
+- [UPDATE](/docs/dml/update) — the "no WHERE" risk a transaction makes recoverable: `BEGIN`, run it, check the result, `COMMIT` or `ROLLBACK`.
+- [DELETE](/docs/dml/delete) — same safety pattern; a transaction is the practical version of "run the SELECT first."
+</Related>
+
+## Safety checklist
+
+- wrap multi-step changes in a transaction so a failure partway through can't leave data half-changed
+- for a risky UPDATE/DELETE, `BEGIN`, run it, inspect the result, then `COMMIT` or `ROLLBACK` — don't autocommit blind
+- always have an explicit `ROLLBACK` on error — most engines don't roll back a failed statement for you
+- keep transactions short; an open one holds locks other connections wait on
