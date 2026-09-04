@@ -1,12 +1,12 @@
 ---
 title: FULL OUTER JOIN
-description: Return all rows from both tables, including unmatched rows from either side.
+description: Return every row from both tables, matched or not — and how to get the same result on engines that don't support it.
 ---
 
 ## Syntax
 
 ```sql
-SELECT *
+SELECT ...
 FROM left_table lt
 FULL OUTER JOIN right_table rt
   ON lt.key = rt.key;
@@ -14,28 +14,65 @@ FULL OUTER JOIN right_table rt
 
 ## What it does
 
-A `FULL OUTER JOIN` preserves all rows from both tables and fills missing values with `NULL` where there is no match.
+Preserves every row from **both** tables, filling in `NULL` on whichever side
+has no match. It's `LEFT JOIN` and `RIGHT JOIN` at once.
 
-## Example
+<SqlRunner query={`SELECT c.customer_id, c.name, o.order_id, o.status
+FROM customers c
+FULL OUTER JOIN orders o ON c.customer_id = o.customer_id
+ORDER BY c.customer_id, o.order_id;`} />
+
+## Engine support
+
+<Callout type="warn">
+**MySQL has no `FULL OUTER JOIN`** (as of MySQL 8). Neither does older SQLite
+(added in 3.39, 2022) or SQLite compiled without it. Check before you ship one.
+</Callout>
+
+| Engine | Native `FULL OUTER JOIN` |
+| --- | --- |
+| PostgreSQL | yes |
+| SQL Server | yes |
+| Oracle | yes |
+| SQLite 3.39+ | yes |
+| MySQL (all versions) | **no** |
+
+## Emulating it where it's missing
+
+`LEFT JOIN` the two tables, then `UNION` a `RIGHT`-style query filtered to the
+rows the first side missed:
 
 ```sql
-SELECT
-  c.customer_id,
-  c.name,
-  o.order_id,
-  o.total_amount
+SELECT c.customer_id, c.name, o.order_id, o.status
 FROM customers c
-FULL OUTER JOIN orders o
-  ON c.customer_id = o.customer_id;
+LEFT JOIN orders o ON c.customer_id = o.customer_id
+
+UNION
+
+SELECT c.customer_id, c.name, o.order_id, o.status
+FROM orders o
+LEFT JOIN customers c ON c.customer_id = o.customer_id;
 ```
+
+`UNION` (not `UNION ALL`) is required — it's what dedupes the rows that matched
+and would otherwise appear from both halves.
 
 ## When to use it
 
-This is useful when you need a complete diff of both sets, such as reconciling data between systems or reviewing unmatched records from either side.
+Reconciling two datasets: rows only on the left, rows only on the right, and
+rows in both — a full diff in one query.
 
 ## Common risk
 
-It is easy to overread the output because the result can be much larger than a simple `LEFT JOIN` or `INNER JOIN`.
+Easy to overread. The result can be much larger than a `LEFT` or `INNER JOIN`
+over the same tables, and a careless `COUNT(*)` on it mixes three different
+kinds of row (matched, left-only, right-only) into one number.
+
+<Related>
+- [LEFT JOIN](/docs/joins/left-join) — half of a full outer join.
+- [Set operations](/docs/core/set-operations) — UNION, the operator the emulation is built on.
+- [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — when you only need one side's unmatched rows, this is usually simpler.
+</Related>
 
 ## Safety check before shipping
 

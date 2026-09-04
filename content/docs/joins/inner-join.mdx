@@ -1,42 +1,64 @@
 ---
 title: INNER JOIN
-description: Return only the rows that match in both tables.
+description: Return only the rows that match in both tables — and know when a non-unique key silently duplicates them.
 ---
 
 ## Syntax
 
 ```sql
-SELECT *
-FROM customers c
-INNER JOIN orders o
-  ON c.customer_id = o.customer_id;
+SELECT ...
+FROM left_table lt
+INNER JOIN right_table rt
+  ON lt.key = rt.key;
 ```
+
+`INNER JOIN` and plain `JOIN` are the same thing — the `INNER` is optional.
 
 ## What it does
 
-An `INNER JOIN` keeps only the rows with matching keys in both tables. It is the most common join when filtering to existing relationships.
+Keeps only the rows with matching keys in both tables. It's the default join
+when you're filtering to relationships that actually exist.
 
 ## Example
 
-```sql
-SELECT
+<SqlRunner query={`SELECT
   c.customer_id,
   c.name,
   o.order_id,
-  o.total_amount
+  o.amount
 FROM customers c
 INNER JOIN orders o
-  ON c.customer_id = o.customer_id;
-```
+  ON c.customer_id = o.customer_id
+ORDER BY c.customer_id;`} />
 
-## Common pitfalls
+Customers 6 and 7 (Wayne Enterprises, Soylent) have no orders — they simply
+don't appear. That's `INNER JOIN`'s defining behavior; if you need them anyway,
+that's a [LEFT JOIN](/docs/joins/left-join).
 
-- the join key may be wrong or mismatched
-- duplicate rows may appear if the join key is not unique in one or both tables
-- downstream filters may hide rows you expected to see
+## Fan-out: the row count can grow
+
+If the right table has more than one matching row per key, the left row repeats
+— once per match:
+
+<SqlRunner query={`SELECT c.customer_id, c.name, COUNT(o.order_id) AS matched_orders
+FROM customers c
+INNER JOIN orders o ON o.customer_id = c.customer_id
+GROUP BY c.customer_id;`} />
+
+Customer 1 has 3 orders, so joining `customers` to `orders` on `customer_id`
+turns that **one** customer row into **three**. This is correct when you want
+one row per order — but if you then `SUM()` a customer-level column without
+grouping, you'll silently multiply it. Always check the row count against what
+you expect before trusting a join's aggregate.
+
+<Related>
+- [LEFT JOIN](/docs/joins/left-join) — keep unmatched left rows instead of dropping them.
+- [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — the opposite question: what INNER JOIN drops.
+- [GROUP BY](/docs/core/group-by) — the fix for fan-out when aggregating.
+</Related>
 
 ## Safety check before shipping
 
 - confirm the join key represents the intended relationship
 - inspect row counts before and after the join
-- decide whether duplicates are valid or indicate a broken relationship
+- decide whether duplicates (fan-out) are valid or indicate a broken relationship

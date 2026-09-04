@@ -1,6 +1,6 @@
 ---
 title: LEFT JOIN
-description: Preserve rows on the left and match records on the right when they exist.
+description: Preserve every row on the left and match records on the right when they exist — and avoid the WHERE clause that quietly turns it back into an INNER JOIN.
 ---
 
 ## Syntax
@@ -12,39 +12,54 @@ LEFT JOIN right_table rt
   ON lt.key = rt.key;
 ```
 
+(`LEFT OUTER JOIN` is the same thing — `OUTER` is optional.)
+
 ## What it does
 
-A `LEFT JOIN` keeps every row from the left table, even if there is no matching row on the right. Right-side columns will be `NULL` for unmatched rows.
+Keeps every row from the left table, matched or not. Right-side columns are
+`NULL` where there's no match.
 
-## Example
-
-```sql
-SELECT
-  c.customer_id,
-  c.name,
-  o.order_id,
-  o.total_amount
+<SqlRunner query={`SELECT c.customer_id, c.name, o.order_id, o.amount
 FROM customers c
-LEFT JOIN orders o
-  ON c.customer_id = o.customer_id;
-```
+LEFT JOIN orders o ON c.customer_id = o.customer_id
+ORDER BY c.customer_id;`} />
 
-## Common mistake
+Customers 6 and 7 show up with `NULL` order columns — unlike
+[INNER JOIN](/docs/joins/inner-join), they aren't dropped.
 
-This is a classic bug:
+## The classic bug: a WHERE filter collapses it back to INNER
 
-```sql
-SELECT *
+<SqlRunner query={`SELECT c.customer_id, c.name, o.order_id, o.status
+FROM customers c
+LEFT JOIN orders o ON c.customer_id = o.customer_id
+WHERE o.status = 'paid';`} />
+
+Customers 6 and 7 vanished. `o.status = 'paid'` runs in `WHERE` **after** the
+join, and `NULL = 'paid'` is `UNKNOWN` — so every unmatched row gets filtered
+out, and the `LEFT JOIN` behaves exactly like an `INNER JOIN`. See
+[WHERE: LEFT JOIN filters belong in ON](/docs/core/where#left-join-filters-belong-in-on)
+for why.
+
+Move the condition into `ON` to keep the unmatched rows:
+
+<SqlRunner query={`SELECT c.customer_id, c.name, o.order_id, o.status
 FROM customers c
 LEFT JOIN orders o
   ON c.customer_id = o.customer_id
-WHERE o.customer_id IS NULL;
-```
+  AND o.status = 'paid'
+ORDER BY c.customer_id;`} />
 
-This filters to rows that had no match, which is valid when that is the intent. But if the requirement is to keep unmatched rows while also checking some order-level condition, the filter may need to move into the `ON` clause instead.
+Same filter, same join — but now it's part of *which rows match*, not *which
+rows survive*, so customers 6 and 7 stay with `NULL` order columns.
+
+<Related>
+- [WHERE](/docs/core/where) — the full explanation of NULL-in-WHERE and the ON-vs-WHERE distinction.
+- [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — LEFT JOIN … IS NULL as an anti-join.
+- [COALESCE](/docs/functions/coalesce) — filling those NULL right-side columns for display.
+</Related>
 
 ## Safety check before shipping
 
-- confirm whether unmatched rows are expected
-- decide whether right-side `NULL`s are valid or should be coalesced
-- make sure the business rule is encoded in the join condition rather than accidentally in a `WHERE` clause
+- confirm whether unmatched rows are expected in the output
+- decide whether right-side `NULL`s should be coalesced or left explicit
+- make sure any condition on the right table is in `ON`, not `WHERE`, unless collapsing to an inner join is the actual intent
