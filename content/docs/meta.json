@@ -8,6 +8,7 @@
     "functions",
     "joins",
     "windows",
+    "dml",
     "recipes",
     "playground",
     "checklist"

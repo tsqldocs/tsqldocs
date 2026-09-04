@@ -1,0 +1,118 @@
+---
+title: UPDATE
+description: Change existing rows — and the one clause standing between "some rows" and "every row."
+---
+
+## Syntax
+
+```sql
+UPDATE table
+SET column1 = value1, column2 = value2, ...
+WHERE predicate;
+```
+
+<Parameters>
+  <Param name="SET" type="column = expression, …" required>
+    Which columns to change and their new values. Reference the row's own
+    current values freely: `SET amount = amount * 1.1`.
+  </Param>
+  <Param name="WHERE" type="predicate">
+    Optional **only in syntax** — omit it and every row in the table is
+    updated. Always write it deliberately, never by accident of omission.
+  </Param>
+</Parameters>
+
+## Basic update
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders;
+CREATE TABLE scratch_orders AS SELECT * FROM orders;
+
+UPDATE scratch_orders
+SET status = 'flagged'
+WHERE amount > 100;
+
+SELECT order_id, amount, status FROM scratch_orders ORDER BY order_id;`} />
+
+## No WHERE updates every row
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders2;
+CREATE TABLE scratch_orders2 AS SELECT * FROM orders;
+
+UPDATE scratch_orders2 SET status = 'reviewed';
+
+SELECT status, COUNT(*) FROM scratch_orders2 GROUP BY status;`} />
+
+Every order became `'reviewed'` — there was no `WHERE` to narrow it. This is
+syntactically valid on every engine, which is exactly the danger: nothing
+stops it from running. **Run the equivalent `SELECT ... WHERE ...` first**,
+confirm the row count, then convert it to an `UPDATE`.
+
+## Updating from another table
+
+Standard SQL doesn't have one syntax for this — it's genuinely different per engine:
+
+```sql
+-- Postgres: UPDATE ... FROM
+UPDATE orders o
+SET amount = amount * 0.9
+FROM customers c
+WHERE c.customer_id = o.customer_id AND c.country = 'CA';
+
+-- MySQL: UPDATE with JOIN
+UPDATE orders o
+JOIN customers c ON c.customer_id = o.customer_id
+SET o.amount = o.amount * 0.9
+WHERE c.country = 'CA';
+
+-- SQL Server: UPDATE ... FROM (same shape as Postgres)
+UPDATE o
+SET o.amount = o.amount * 0.9
+FROM orders o
+JOIN customers c ON c.customer_id = o.customer_id
+WHERE c.country = 'CA';
+```
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders3;
+CREATE TABLE scratch_orders3 AS SELECT * FROM orders;
+
+UPDATE scratch_orders3
+SET amount = amount * 0.9
+WHERE customer_id IN (SELECT customer_id FROM customers WHERE country = 'CA');
+
+SELECT order_id, customer_id, amount FROM scratch_orders3 ORDER BY order_id;`} />
+
+(SQLite has no `UPDATE ... FROM ... JOIN` shorthand for this shape — a
+subquery like above is the portable fallback that works everywhere.)
+
+## Getting the changed rows back
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders4;
+CREATE TABLE scratch_orders4 AS SELECT * FROM orders;
+
+UPDATE scratch_orders4
+SET status = 'flagged'
+WHERE amount > 100
+RETURNING order_id, amount;`} />
+
+## Gotchas
+
+- **No `WHERE` means every row** — the single most common accidental-update
+  cause. Test with `SELECT` first.
+- **`SET col = col + 1` uses the pre-update value**, evaluated per row — safe
+  for relative updates, but two concurrent updates to the same row are a race
+  unless the transaction/isolation level prevents it.
+- **Updating the join key itself** can change which rows a multi-table
+  `UPDATE ... FROM` matches mid-statement on some engines — avoid updating a
+  column that's also part of the join condition.
+
+<Related>
+- [DELETE](/docs/dml/delete) — same "no WHERE = everything" danger, more permanent.
+- [WHERE](/docs/core/where) — the predicate rules are identical to a SELECT's WHERE.
+- [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — the join patterns UPDATE ... FROM/JOIN are built on.
+</Related>
+
+## Safety checklist
+
+- run the equivalent SELECT ... WHERE first and check the row count
+- wrap in a transaction you can roll back until you've verified the result
+- for cross-table updates, confirm the join can't match a row more than once (that silently picks one match arbitrarily)

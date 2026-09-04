@@ -1,0 +1,94 @@
+---
+title: DELETE
+description: Remove rows — the WHERE-omission danger again, and how DELETE differs from TRUNCATE.
+---
+
+## Syntax
+
+```sql
+DELETE FROM table
+WHERE predicate;
+```
+
+<Parameters>
+  <Param name="WHERE" type="predicate">
+    Optional in syntax, never in practice — omit it and every row is deleted.
+  </Param>
+</Parameters>
+
+## Basic delete
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders;
+CREATE TABLE scratch_orders AS SELECT * FROM orders;
+
+DELETE FROM scratch_orders WHERE status = 'refunded';
+
+SELECT order_id, status FROM scratch_orders ORDER BY order_id;`} />
+
+## No WHERE deletes every row
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders2;
+CREATE TABLE scratch_orders2 AS SELECT * FROM orders;
+
+DELETE FROM scratch_orders2;
+
+SELECT COUNT(*) AS rows_remaining FROM scratch_orders2;`} />
+
+Zero rows left. Same danger as [UPDATE](/docs/dml/update) with no `WHERE`,
+except there's no value left to inspect afterward — always run the `SELECT`
+version of the predicate first and check the count.
+
+## Deleting based on another table
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders3;
+CREATE TABLE scratch_orders3 AS SELECT * FROM orders;
+
+DELETE FROM scratch_orders3
+WHERE customer_id IN (
+  SELECT customer_id FROM customers WHERE country = 'GB'
+);
+
+SELECT order_id, customer_id FROM scratch_orders3 ORDER BY order_id;`} />
+
+Postgres and SQL Server also support `DELETE ... USING`/`FROM` with a join
+instead of a subquery; MySQL supports `DELETE t1 FROM t1 JOIN t2 ...`. The
+subquery form above is the one that's portable across all of them.
+
+## DELETE vs TRUNCATE
+
+| | `DELETE FROM t` | `TRUNCATE TABLE t` |
+| --- | --- | --- |
+| Can filter with WHERE | yes | no — always removes everything |
+| Speed on a large table | scans and removes row by row | near-instant (deallocates storage) |
+| Fires row-level triggers | yes | usually not |
+| Resets auto-increment counters | no | usually yes |
+| Transactional / rollback-able | yes, everywhere | yes on Postgres/SQL Server; **auto-commits on MySQL** |
+| Row count returned | yes | usually not |
+
+Reach for `TRUNCATE` only when you mean "empty the whole table" and don't need
+triggers or a filtered subset — and double-check your engine's rollback
+behavior before relying on being able to undo it.
+
+## Gotchas
+
+- **No `WHERE` deletes everything** — the same accidental-blast-radius issue
+  as `UPDATE`, but unrecoverable without a backup or transaction rollback.
+- **Foreign keys can cascade — or block the delete.** Depending on how a
+  referencing table's constraint is defined (`ON DELETE CASCADE` vs the
+  default `RESTRICT`), deleting a parent row either silently removes child
+  rows too, or the statement fails outright. Know which behavior is configured.
+- **A join-based DELETE that matches a row more than once** doesn't delete it
+  twice — the row is just gone after the first match — but it's a sign the
+  join key isn't unique, worth checking regardless.
+
+<Related>
+- [UPDATE](/docs/dml/update) — the same "no WHERE" risk, but recoverable if you catch it.
+- [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — the anti-join patterns behind a subquery DELETE.
+- [Deduplicate rows](/docs/recipes/deduplicate) — finding duplicates before turning the SELECT into a DELETE.
+</Related>
+
+## Safety checklist
+
+- run the equivalent SELECT ... WHERE first and check the row count
+- wrap in a transaction you can roll back until the result is verified
+- know whether foreign keys will cascade the delete to other tables

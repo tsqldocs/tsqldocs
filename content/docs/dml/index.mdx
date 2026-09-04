@@ -1,0 +1,22 @@
+---
+title: Writing data
+description: INSERT, UPDATE, and DELETE — the statements that change rows instead of just reading them.
+---
+
+Everything else in these docs is about `SELECT`. These three statements are
+how data gets there in the first place, and how it changes.
+
+<Cards>
+  <Card title="INSERT" description="Add rows — single, multi-row, and INSERT ... SELECT." href="/docs/dml/insert" />
+  <Card title="UPDATE" description="Change existing rows — and the WHERE clause that stops it from changing every row." href="/docs/dml/update" />
+  <Card title="DELETE" description="Remove rows — and how it differs from TRUNCATE." href="/docs/dml/delete" />
+</Cards>
+
+## Playground note
+
+The examples on these pages run against a **scratch copy** of a seed table
+(`CREATE TABLE scratch_x AS SELECT * FROM x`), not the real one — so running an
+UPDATE or DELETE here never affects the examples on other pages. Feel free to
+mutate away.
+
+<TryPlayground>Want to experiment freely? The playground is the same SQLite engine, no guardrails.</TryPlayground>

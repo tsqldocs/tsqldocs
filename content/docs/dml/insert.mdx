@@ -1,0 +1,101 @@
+---
+title: INSERT
+description: Add rows — single, multi-row, from a SELECT, and getting the inserted rows back.
+---
+
+## Syntax
+
+```sql
+INSERT INTO table (column1, column2, ...)
+VALUES (value1, value2, ...), (value1, value2, ...), ...;
+```
+
+<Parameters>
+  <Param name="column1, column2, …" type="identifiers">
+    The columns being set, in order. Omitted columns get their default value
+    (or `NULL` if there is no default) — they aren't skipped.
+  </Param>
+  <Param name="VALUES (...)" type="one or more rows" required>
+    One tuple per row. Comma-separate multiple tuples to insert several rows
+    in one statement.
+  </Param>
+</Parameters>
+
+## Single row
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
+CREATE TABLE scratch_customers AS SELECT * FROM customers WHERE 1 = 0;
+
+INSERT INTO scratch_customers (customer_id, name, country)
+VALUES (100, 'Globex Testing', 'CA');
+
+SELECT * FROM scratch_customers;`} />
+
+## Multiple rows in one statement
+
+One round-trip instead of N — meaningfully faster than N separate `INSERT`s:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_customers2;
+CREATE TABLE scratch_customers2 AS SELECT * FROM customers WHERE 1 = 0;
+
+INSERT INTO scratch_customers2 (customer_id, name, country) VALUES
+  (100, 'Globex Testing', 'CA'),
+  (101, 'Initrode Testing', 'GB'),
+  (102, 'Hooli Testing', 'US');
+
+SELECT * FROM scratch_customers2 ORDER BY customer_id;`} />
+
+## INSERT ... SELECT
+
+Copy or transform rows from one query straight into a table — no round trip
+through the application at all:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_high_value;
+CREATE TABLE scratch_high_value (customer_id INTEGER, total_spend REAL);
+
+INSERT INTO scratch_high_value (customer_id, total_spend)
+SELECT customer_id, SUM(amount)
+FROM orders
+GROUP BY customer_id
+HAVING SUM(amount) > 300;
+
+SELECT * FROM scratch_high_value ORDER BY total_spend DESC;`} />
+
+## Getting the inserted rows back
+
+`RETURNING` (Postgres, SQLite 3.35+) skips a follow-up `SELECT`:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_customers3;
+CREATE TABLE scratch_customers3 AS SELECT * FROM customers WHERE 1 = 0;
+
+INSERT INTO scratch_customers3 (customer_id, name, country)
+VALUES (100, 'Globex Testing', 'CA')
+RETURNING customer_id, name;`} />
+
+SQL Server's equivalent is `OUTPUT inserted.customer_id, inserted.name`. MySQL
+has neither — use `LAST_INSERT_ID()` for an auto-increment key, or a follow-up
+`SELECT`.
+
+## Gotchas
+
+- **Column order in `VALUES` must match the column list**, not the table's
+  physical column order — always list columns explicitly rather than relying
+  on positional matching to the table definition.
+- **Omitted columns aren't skipped** — they get `DEFAULT` or `NULL`. A missing
+  `NOT NULL` column with no default fails the whole statement.
+- **Duplicate-key behavior is dialect-specific.** `INSERT OR IGNORE` (SQLite),
+  `INSERT IGNORE` (MySQL), `ON CONFLICT DO NOTHING` (Postgres, SQLite) all
+  silently skip a conflicting row differently — check which your engine uses
+  before assuming "ignore" behaves the same everywhere.
+
+<Related>
+- [UPDATE](/docs/dml/update) — changing rows that already exist.
+- [Set operations](/docs/core/set-operations) — UNION for combining the SELECT side of an INSERT ... SELECT.
+- [NULL handling](/docs/core/nulls) — what an omitted column with no default actually becomes.
+</Related>
+
+## Safety checklist
+
+- confirm every `NOT NULL` column either has a default or is explicitly supplied
+- list columns explicitly rather than relying on table column order
+- for bulk loads, prefer one multi-row INSERT (or INSERT ... SELECT) over many single-row statements
