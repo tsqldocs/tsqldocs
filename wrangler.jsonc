@@ -19,6 +19,12 @@
   "images": {
     "binding": "IMAGES"
   },
+  "kv_namespaces": [
+    {
+      "binding": "RATE_LIMIT",
+      "id": "1edc082cd1e244cab4fbdf46ebc73280"
+    }
+  ],
   "routes": [
     { "pattern": "tsqldocs.com", "custom_domain": true }
   ]

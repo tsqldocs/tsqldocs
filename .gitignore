@@ -24,7 +24,10 @@ yarn-error.log*
 /.open-next/
 .dev.vars
 .wrangler/
-cloudflare-env.d.ts
+# cloudflare-env.d.ts is committed (not ignored): Workers Builds' CI doesn't
+# run `wrangler types`, so the generated bindings need to already be in the
+# tree for the build to typecheck. Regenerate with `npm run cf-typegen`
+# after any change to wrangler.jsonc's bindings.
 
 # others
 .env*.local

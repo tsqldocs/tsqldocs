@@ -11,6 +11,13 @@ import { z } from 'zod';
 import { source } from '@/lib/source';
 import { Document, type DocumentData } from 'flexsearch';
 import { ChatUIMessage, SearchTool } from '../../../components/ai/search';
+import { checkRateLimit } from '@/lib/rate-limit';
+
+// Bounds worst-case Anthropic spend from a bot or a loop, while being
+// generous enough that a real person debugging queries won't hit it in one
+// session. No subscriber tier here (unlike xlsdocs) — just one shared cap.
+const CHAT_RATE_LIMIT = 30;
+const CHAT_RATE_WINDOW_SECONDS = 60 * 60;
 
 interface CustomDocument extends DocumentData {
   url: string;
@@ -96,7 +103,16 @@ export async function POST(req: Request, ctx: RouteContext<"/api/chat">) {
     );
   }
 
-  const reqJson = await req.json();
+  const { allowed } = await checkRateLimit(req, 'chat', CHAT_RATE_LIMIT, CHAT_RATE_WINDOW_SECONDS);
+  if (!allowed) {
+    return Response.json(
+      { error: "You've hit the hourly limit for AI questions — try again in a bit." },
+      { status: 429 },
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- request body shape is the AI SDK's UIMessage[], validated by convertToModelMessages
+  const reqJson: any = await req.json();
 
   const result = streamText({
     model: anthropic(process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6'),
