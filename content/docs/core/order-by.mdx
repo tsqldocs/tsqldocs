@@ -1,34 +1,71 @@
 ---
 title: ORDER BY
-description: Make result ordering deterministic and intentional.
+description: Make result ordering deterministic and intentional — including where NULLs land and how that differs by engine.
 ---
 
 ## Syntax
 
 ```sql
-ORDER BY column_name [ASC | DESC], secondary_column [ASC | DESC]
+ORDER BY column_name [ASC | DESC] [NULLS FIRST | NULLS LAST], ...
 ```
 
 ## Why it matters
 
-Without a unique tiebreaker, the order of rows that share the same value is not guaranteed. That can affect paging, ranking, and results that are later exported or compared.
+Without a unique tiebreaker, the order of rows that share the same value is not
+guaranteed. That can affect paging, ranking, and results that are later exported
+or compared.
 
-## Example
+<SqlRunner query={`SELECT product_id, sales
+FROM product_sales
+ORDER BY sales DESC, product_id ASC;`} />
+
+## Where NULLs sort
+
+`NULL` isn't a value to compare, so engines pick a side — and they don't all pick
+the same one. This is the single most common cross-engine `ORDER BY` surprise.
+
+| Engine | `ASC` default | `DESC` default | Explicit override |
+| --- | --- | --- | --- |
+| PostgreSQL | NULLs **last** | NULLs **first** | `NULLS FIRST` / `NULLS LAST` |
+| Oracle | NULLs **last** | NULLs **first** | `NULLS FIRST` / `NULLS LAST` |
+| SQL Server | NULLs **first** | NULLs **last** | no native syntax — emulate below |
+| MySQL | NULLs **first** | NULLs **last** | `ORDER BY col IS NULL, col` |
+| SQLite | NULLs **first** | NULLs **last** | `NULLS FIRST` / `NULLS LAST` (3.30+) |
+
+<SqlRunner query={`SELECT order_id, status, cancelled_at
+FROM orders
+ORDER BY cancelled_at ASC;`} />
+
+`cancelled_at` is `NULL` for every order that hasn't been cancelled — in SQLite
+those `NULL` rows sort **first**. On Postgres the identical query would put them
+**last**. If a report or a "top N" query depends on which end the NULLs land,
+say so explicitly instead of relying on the default.
+
+### Forcing it explicitly
 
 ```sql
-SELECT
-  product_id,
-  sales
-FROM product_sales
-ORDER BY sales DESC, product_id ASC;
+-- Postgres, Oracle, SQLite 3.30+
+ORDER BY cancelled_at ASC NULLS LAST;
+
+-- SQL Server / older engines: push NULL to a synthetic sort key
+ORDER BY CASE WHEN cancelled_at IS NULL THEN 1 ELSE 0 END, cancelled_at ASC;
 ```
 
 ## Good practice
 
 - add a stable tie-breaker such as a primary key or timestamp
+- state where NULLs should land instead of relying on the engine's default
 - document the business rule behind the order
 - be explicit when results are expected to be stable across runs
 
 ## Safety check before shipping
 
-If the query is used for pagination or ranking, verify that the ordering is deterministic enough to support repeated results and audits.
+If the query is used for pagination or ranking, verify that the ordering is
+deterministic enough to support repeated results and audits — and that a NULL
+in the sort column doesn't put a row somewhere unexpected.
+
+<Related>
+- [NULL handling](/docs/core/nulls) — the three-valued logic behind why NULL needs a rule at all.
+- [LIMIT / OFFSET](/docs/core/limit) — LIMIT is only meaningful over a deterministic ORDER BY.
+- [Window frames](/docs/windows/frames) — the ORDER BY inside OVER (...) follows the same NULL rules.
+</Related>

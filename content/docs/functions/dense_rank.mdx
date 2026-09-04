@@ -31,6 +31,24 @@ DENSE_RANK() OVER (
 
 Example: values `10, 10, 20` become ranks `1, 1, 2`.
 
+## Compare the three ranking functions
+
+Same input (`90000, 90000, 80000, 70000`), three different outputs:
+
+| salary | ROW_NUMBER | RANK | DENSE_RANK |
+| --- | --- | --- | --- |
+| 90,000 | 1 | 1 | 1 |
+| 90,000 | 2 | 1 | 1 |
+| 80,000 | 3 | 3 ← gap | 2 ← no gap |
+| 70,000 | 4 | 4 | 3 |
+
+- **`ROW_NUMBER`** — every row unique; ties broken arbitrarily unless you add a tiebreaker.
+- **`RANK`** — ties share a rank, then **skips** ahead by the tie count.
+- **`DENSE_RANK`** — ties share a rank, next rank is **always +1** — no gaps.
+
+Reach for `DENSE_RANK` when you mean "top 3 distinct value tiers"; reach for
+`ROW_NUMBER` when you mean "exactly 3 rows."
+
 ## Example
 
 ```sql
@@ -56,6 +74,31 @@ ORDER BY category_id, sales DESC;`} />
 
 Category 1 has two products tied at `400`. `DENSE_RANK` gives the next product
 tier `2`; `RANK` gives it `3`.
+
+## Filtering by rank
+
+You can't put `DENSE_RANK()` directly in `WHERE`:
+
+```sql
+SELECT * FROM product_sales
+WHERE DENSE_RANK() OVER (PARTITION BY category_id ORDER BY sales DESC) <= 2;
+-- ERROR: window functions are not allowed in WHERE
+```
+
+`WHERE` runs **before** window functions are computed — there's no rank yet to
+filter on. Wrap the query in a subquery or CTE and filter the outer layer:
+
+<SqlRunner query={`SELECT * FROM (
+  SELECT
+    product_name, category_id, sales,
+    DENSE_RANK() OVER (PARTITION BY category_id ORDER BY sales DESC) AS tier
+  FROM product_sales
+) ranked
+WHERE tier <= 2
+ORDER BY category_id, tier;`} />
+
+(Postgres, MySQL 8+, SQLite, DuckDB: this is what `QUALIFY` exists to skip in
+Snowflake/BigQuery/Databricks — `... QUALIFY DENSE_RANK() OVER (...) <= 2`.)
 
 ## Related
 
