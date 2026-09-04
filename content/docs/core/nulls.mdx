@@ -1,38 +1,73 @@
 ---
 title: NULL handling
-description: Understand NULL semantics, comparisons, and safe SQL patterns.
+description: NULL semantics, three-valued logic, and the functions that make nullable data safe to work with.
 ---
 
 ## The core rule
 
-In SQL, `NULL` means “unknown,” not “empty string” and not “zero.” That means standard comparisons behave differently.
+`NULL` means "unknown" — not empty string, not zero. Comparisons against an
+unknown value are themselves unknown, so `WHERE col = NULL` is **never true**,
+even for rows where `col` is `NULL`. Use `IS NULL` / `IS NOT NULL` instead.
 
-```sql
-WHERE col = NULL
-```
+<SqlRunner query={`SELECT order_id, cancelled_at
+FROM orders
+WHERE cancelled_at IS NULL;`} />
 
-This is never true. Use `IS NULL` or `IS NOT NULL` instead.
+## Three-valued logic
 
-## Common patterns
+Every comparison involving `NULL` evaluates to `UNKNOWN`, not `TRUE` or `FALSE`
+— and `WHERE`/`HAVING`/`JOIN ... ON` only keep rows where the result is `TRUE`.
+`UNKNOWN` is treated like `FALSE` for filtering, but not for `AND`/`OR` logic:
 
-```sql
-SELECT
-  COALESCE(email, 'unknown@example.com') AS email,
-  CASE
-    WHEN score IS NULL THEN 0
-    ELSE score
-  END AS score
-FROM users;
-```
+| | `TRUE` | `FALSE` | `UNKNOWN` |
+| --- | --- | --- | --- |
+| `x AND UNKNOWN` | UNKNOWN | FALSE | UNKNOWN |
+| `x OR UNKNOWN` | TRUE | UNKNOWN | UNKNOWN |
+| `NOT UNKNOWN` | — | — | UNKNOWN |
+
+That's why `NOT (col = NULL)` is still `UNKNOWN`, not `TRUE` — negating unknown
+gives you unknown back, not a match.
+
+## Functions for nullable data
+
+| Function | What it does |
+| --- | --- |
+| [`COALESCE(a, b, ...)`](/docs/functions/coalesce) | First non-NULL argument. Standard SQL, works everywhere. |
+| `NULLIF(a, b)` | `NULL` if `a = b`, otherwise `a`. The inverse of COALESCE — turns a sentinel value *into* NULL. |
+| `IS NULL` / `IS NOT NULL` | The only correct way to test for NULL in a predicate. |
+
+<SqlRunner query={`SELECT
+  order_id,
+  amount,
+  NULLIF(amount, 0) AS amount_or_null
+FROM orders
+WHERE customer_id = 5;`} />
+
+Order 109 has `amount = 0`; `NULLIF` turns that `0` into `NULL` — useful right
+before an `AVG()` or a division where a literal `0` should be excluded rather
+than counted.
+
+### Dialect equivalents
+
+`COALESCE` is standard SQL and works on every engine above. A few engines also
+have shorter non-standard aliases: `IFNULL(a, b)` (MySQL, SQLite — two
+arguments only), `ISNULL(a, b)` (SQL Server), `NVL(a, b)` (Oracle). `COALESCE`
+is preferred because it's portable and takes any number of arguments.
 
 ## Why this matters
 
-- filters can silently exclude rows
-- aggregate logic can be surprising
-- reporting outputs can look inconsistent if nullable values are not normalized
+- filters can silently exclude rows you expected to see
+- aggregates (`SUM`, `AVG`, `COUNT(column)`) skip `NULL`s rather than treating them as zero
+- reporting output looks inconsistent if nullable values aren't normalized at a boundary
+
+<Related>
+- [WHERE](/docs/core/where) — the ON-vs-WHERE and LEFT JOIN interactions with NULL.
+- [COALESCE](/docs/functions/coalesce) — the fallback-value function in depth.
+- [ORDER BY](/docs/core/order-by) — where NULLs sort, which also varies by engine.
+</Related>
 
 ## Safety checklist
 
-- decide whether `NULL` should stay as `NULL`, or be replaced at the boundary
-- use `COALESCE` for display and fallback logic
+- decide whether `NULL` should stay as `NULL`, or be replaced at a boundary
+- use `COALESCE` for display and fallback logic, never `= NULL`
 - use `IS NULL` / `IS NOT NULL` for predicate checks

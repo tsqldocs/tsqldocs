@@ -1,44 +1,77 @@
 ---
 title: GROUP BY
-description: Control aggregation grain and avoid accidental output changes.
+description: Control aggregation grain — one row per distinct combination of the grouping columns.
 ---
+
+## Syntax
+
+```sql
+SELECT grouping_column, agg_function(other_column)
+FROM table
+GROUP BY grouping_column;
+```
 
 ## What it does
 
-`GROUP BY` collapses rows into one row per distinct combination of the grouping columns, then computes aggregate functions like `SUM`, `COUNT`, `AVG`, and `MAX` over each group.
+`GROUP BY` collapses rows into one row per distinct combination of the grouping
+columns, then computes aggregate functions (`SUM`, `COUNT`, `AVG`, `MAX`, …)
+over each group.
 
-## Example
-
-```sql
-SELECT
+<SqlRunner query={`SELECT
   customer_id,
   COUNT(*) AS orders,
   SUM(amount) AS total_spend
 FROM orders
-GROUP BY customer_id;
-```
+GROUP BY customer_id
+ORDER BY total_spend DESC;`} />
 
-## Important behavior
-
-- every non-aggregated column in the `SELECT` list must be included in `GROUP BY`
-- grouping changes the grain of the result set
-- adding or removing a grouping column changes the meaning of the query
-
-## Common mistake
+## Every selected column must be grouped or aggregated
 
 ```sql
-SELECT
-  customer_id,
-  order_date,
-  SUM(amount)
+SELECT customer_id, order_date, SUM(amount)
 FROM orders
 GROUP BY customer_id;
+-- ERROR: order_date is neither aggregated nor grouped
 ```
 
-This is invalid in most SQL engines because `order_date` is not aggregated and not grouped.
+The engine has one `order_date` per **row** but only one output row per
+**customer** after grouping — it doesn't know which order's date to show. Either
+aggregate it (`MAX(order_date)`) or add it to `GROUP BY` (which changes the
+grain: one row per customer *and* date, not per customer).
+
+## Grouping by more than one column
+
+<SqlRunner query={`SELECT customer_id, status, COUNT(*) AS orders, SUM(amount) AS total
+FROM orders
+GROUP BY customer_id, status
+ORDER BY customer_id, status;`} />
+
+Every extra grouping column narrows the grain. This is now one row per
+(customer, status) pair, not per customer.
+
+## Subtotals: ROLLUP / CUBE / GROUPING SETS
+
+Standard SQL (Postgres, SQL Server, MySQL 8+, Oracle — **not SQLite**) can add
+subtotal rows in one query instead of a `UNION` of several:
+
+```sql
+SELECT customer_id, status, SUM(amount)
+FROM orders
+GROUP BY ROLLUP (customer_id, status);
+-- adds a subtotal row per customer_id, plus one grand-total row
+```
+
+`CUBE` adds subtotals for every combination; `GROUPING SETS` lets you specify
+exactly which subtotal levels you want.
+
+<Related>
+- [HAVING](/docs/core/having) — filtering the groups this produces.
+- [DISTINCT](/docs/core/distinct) — a lighter-weight "collapse duplicate rows" when you don't need an aggregate.
+- [Pivot without PIVOT](/docs/recipes/pivot) — GROUP BY combined with conditional aggregation.
+</Related>
 
 ## Safety checklist
 
-- define the intended aggregation grain
-- ensure all selected columns are either grouped or aggregated
-- review the result set before using it in dashboards or exports
+- define the intended aggregation grain before writing the query
+- ensure every selected column is either grouped or aggregated
+- check whether adding/removing a grouping column silently changed the grain

@@ -1,38 +1,82 @@
 ---
 title: COUNT
-description: Count rows or non-NULL values in a grouped or ungrouped result set.
+description: Count rows or non-NULL values — and know which one you're actually counting.
 ---
 
 ## Syntax
 
 ```sql
-COUNT(column_name)
 COUNT(*)
+COUNT(expression)
+COUNT(DISTINCT expression)
 ```
 
-## What it does
+<Parameters>
+  <Param name="*" type="literal">
+    Counts every row in the group, NULLs included.
+  </Param>
+  <Param name="expression" type="any">
+    Counts rows where the expression is **not NULL**. Add `DISTINCT` to count
+    unique non-NULL values instead of every occurrence.
+  </Param>
+</Parameters>
 
-`COUNT(*)` counts all rows, including those with `NULL` values. `COUNT(column_name)` counts only rows where the expression is not `NULL`.
+## COUNT(*) vs COUNT(column)
 
-## Example
+<SqlRunner query={`SELECT
+  COUNT(*)             AS total_orders,
+  COUNT(cancelled_at)  AS cancelled_orders,
+  COUNT(DISTINCT customer_id) AS distinct_customers
+FROM orders;`} />
 
-```sql
-SELECT
+`COUNT(*)` counted every order. `COUNT(cancelled_at)` only counted the ones
+where that column isn't `NULL` — i.e. orders that were actually cancelled.
+Swapping `COUNT(*)` for `COUNT(some_column)` is one of the most common silent
+bugs in a report: the numbers only match when that column has no NULLs.
+
+## Per group
+
+<SqlRunner query={`SELECT
   customer_id,
-  COUNT(*) AS total_orders,
+  COUNT(*)            AS total_orders,
   COUNT(cancelled_at) AS cancelled_orders
 FROM orders
-GROUP BY customer_id;
-```
+GROUP BY customer_id
+ORDER BY customer_id;`} />
 
-## Common gotchas
+## Counting a subset with CASE
 
-- `COUNT(*)` is different from `COUNT(column)` when the column can be `NULL`
-- a filter in the `WHERE` clause changes which rows are counted
-- a `LEFT JOIN` with `COUNT(*)` can be misleading unless you are counting the joined rows intentionally
+`COUNT` only takes one predicate implicitly (NULL vs not-NULL) — to count rows
+matching an arbitrary condition, wrap it in `CASE` and let the implicit NULL
+rule do the filtering:
+
+<SqlRunner query={`SELECT
+  COUNT(CASE WHEN status = 'paid'     THEN 1 END) AS paid,
+  COUNT(CASE WHEN status = 'refunded' THEN 1 END) AS refunded
+FROM orders;`} />
+
+No `ELSE` on purpose — non-matching rows fall through to `NULL`, which `COUNT`
+skips. See [Pivot without PIVOT](/docs/recipes/pivot) for the full pattern.
+
+## Gotchas
+
+- `COUNT(*)` and `COUNT(column)` disagree the moment `column` can be `NULL` —
+  decide which one the report actually needs.
+- a `WHERE` filter changes the row set **before** `COUNT` runs; a `LEFT JOIN`
+  can inflate or misrepresent `COUNT(*)` if the join fans out (see
+  [INNER JOIN: fan-out](/docs/joins/inner-join#fan-out-the-row-count-can-grow)).
+- `COUNT(DISTINCT a, b)` (multiple columns) isn't standard — MySQL supports it,
+  Postgres and SQL Server don't; use `COUNT(DISTINCT ...)` over a concatenated
+  key or a subquery instead.
+
+<Related>
+- [SUM](/docs/functions/sum) — same NULL-skipping behavior, different aggregate.
+- [GROUP BY](/docs/core/group-by) — the grain COUNT is computed over.
+- [Deduplicate rows](/docs/recipes/deduplicate) — using COUNT(*) to find the duplicates first.
+</Related>
 
 ## Safety checklist
 
-- decide whether `NULL`s should count or be excluded
+- decide whether NULLs should count or be excluded
 - confirm the correct grain before grouping
-- check whether the join semantics are producing the row set you expect
+- check whether join fan-out is inflating the count

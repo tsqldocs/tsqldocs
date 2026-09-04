@@ -1,6 +1,6 @@
 ---
 title: COALESCE
-description: Return the first non-NULL value from a list of expressions.
+description: Return the first non-NULL value from a list — the portable way to supply a fallback.
 ---
 
 ## Syntax
@@ -9,45 +9,68 @@ description: Return the first non-NULL value from a list of expressions.
 COALESCE(value1, value2, ..., valueN)
 ```
 
-## What it does
-
-`COALESCE()` walks the arguments left to right and returns the first value that is not `NULL`.
-
-If every argument is `NULL`, the result is `NULL`.
+<Parameters>
+  <Param name="value1, value2, …" type="any" required>
+    Evaluated left to right. Returns the first one that isn't `NULL`. If every
+    argument is `NULL`, the result is `NULL`.
+  </Param>
+</Parameters>
 
 ## Example
 
-```sql
-SELECT
+<SqlRunner query={`SELECT
+  order_id,
+  status,
+  cancelled_at,
+  COALESCE(cancelled_at, 'not cancelled') AS cancelled_display
+FROM orders
+ORDER BY order_id;`} />
+
+## Fallback chains
+
+Arguments don't have to be columns — mix columns, expressions, and a final
+literal default:
+
+<SqlRunner query={`SELECT
   customer_id,
-  COALESCE(phone_home, phone_mobile, 'Unknown') AS best_phone
-FROM customers;
-```
+  COALESCE(MAX(cancelled_at), 'never') AS last_cancellation
+FROM orders
+GROUP BY customer_id
+ORDER BY customer_id;`} />
 
-## Common use cases
+## COALESCE vs its dialect-specific cousins
 
-- fill missing values with a fallback
-- normalize nullable fields for reporting
-- avoid `NULL` leakage into aggregate or display logic
+| Function | Arguments | Portable? |
+| --- | --- | --- |
+| `COALESCE(a, b, ...)` | any number | yes — standard SQL |
+| `IFNULL(a, b)` | exactly 2 | MySQL, SQLite only |
+| `ISNULL(a, b)` | exactly 2 | SQL Server only (not the same as Postgres's `ISNULL()`, which doesn't exist there) |
+| `NVL(a, b)` | exactly 2 | Oracle only |
 
-## Null semantics
+Prefer `COALESCE` unless you have a specific reason not to — it works
+everywhere and isn't capped at two arguments.
 
-This is one of the most important SQL patterns to use carefully:
+## Gotchas
 
-```sql
-COALESCE(NULL, NULL, 'fallback') = 'fallback'
-```
+- **All arguments should share a compatible type.** Mixing `COALESCE(amount,
+  'N/A')` (number, then text) forces a cast and can throw or silently coerce
+  depending on the engine — cast explicitly instead of relying on the mix.
+- **It evaluates every argument up to the first non-NULL one**, not lazily
+  skip them entirely — an expensive subquery as an early argument still runs
+  even when a later cheap one would've been the fallback anyway (some engines
+  optimize this, don't rely on it).
+- **`COALESCE(x, 0)` before dividing** is the standard guard against a `NULL`
+  propagating through arithmetic — but decide if `0` is really the right
+  default, versus excluding the row.
 
-Whereas:
-
-```sql
-NULL = NULL
-```
-
-is never true in standard SQL predicate evaluation.
+<Related>
+- [NULL handling](/docs/core/nulls) — three-valued logic and NULLIF, COALESCE's inverse.
+- [CASE](/docs/core/case) — for fallback logic that depends on more than "is it NULL".
+- [AVG](/docs/functions/avg) — a common place COALESCE guards against NULL-skewed averages.
+</Related>
 
 ## Safety check before shipping
 
-- confirm the fallback value is appropriate for reporting or business logic
-- verify downstream logic treats the fallback as intended
-- check for nullable columns that should stay nullable rather than be normalized
+- confirm the fallback value makes sense for the column's actual type
+- verify downstream logic treats the fallback the same as a real value would (or doesn't, if that matters)
+- check whether a nullable column should stay nullable rather than be normalized away
