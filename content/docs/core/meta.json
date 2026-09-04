@@ -9,6 +9,7 @@
     "group-by",
     "having",
     "case",
+    "type-coercion",
     "subqueries",
     "cte",
     "set-operations"

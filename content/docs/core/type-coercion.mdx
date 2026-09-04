@@ -1,0 +1,93 @@
+---
+title: Type coercion
+description: Why a comparison, sort, or join gives a different answer than expected — implicit type conversion, and why every engine handles it a little differently.
+---
+
+## The problem
+
+SQL will usually let you compare, sort, or join values of different types
+without complaining — it just converts one of them first. *Which* conversion
+happens, and whether it happens at all, is engine-specific and often not what
+you'd guess.
+
+## Numbers stored as text sort as text
+
+<SqlRunner query={`DROP TABLE IF EXISTS codes;
+CREATE TABLE codes(code TEXT);
+INSERT INTO codes VALUES ('1'), ('2'), ('9'), ('10');
+SELECT code FROM codes ORDER BY code;`} />
+
+`'10'` sorts before `'2'` — character by character, `'1' < '2'`, so `'10'`
+loses to nothing that starts with `'1'` until you hit `'2'`. This is the same
+issue [MIN/MAX](/docs/functions/min-max#text-sorts-lexicographically) runs
+into. If a column holds numeric-looking values, either store it as a numeric
+type or `CAST` it before comparing:
+
+```sql
+ORDER BY CAST(code AS INTEGER)
+```
+
+## Comparing text to a number
+
+<SqlRunner query={`DROP TABLE IF EXISTS codes2;
+CREATE TABLE codes2(code TEXT);
+INSERT INTO codes2 VALUES ('1'), ('2'), ('9'), ('10');
+SELECT code FROM codes2 WHERE code > 5;`} />
+
+This is **SQLite-specific** behavior (its "type affinity" rules) — a `TEXT`
+column compared to a numeric literal doesn't do what a plain numeric
+comparison would. Only `'9'` matched here, not `'10'`. Other engines handle
+the same comparison differently:
+
+| Engine | `TEXT` column `> 5` (numeric literal) |
+| --- | --- |
+| SQLite | applies its own affinity rules — surprising, as above |
+| PostgreSQL | **errors**: `operator does not exist: text > integer` — no implicit cast |
+| MySQL | converts the column to a number for the comparison (closer to "as expected," but silently) |
+
+None of these is "the SQL behavior" — that's exactly the point. Never rely on
+an implicit cross-type comparison; cast explicitly so the query means the same
+thing everywhere:
+
+```sql
+WHERE CAST(code AS INTEGER) > 5
+```
+
+## Dates stored as text
+
+Same category of bug: a `VARCHAR` column holding `'2026-01-05'` sorts and
+compares correctly only because ISO 8601 (`YYYY-MM-DD`) happens to sort the
+same lexicographically as chronologically. `'01/05/2026'` (US format) does
+not — `'12/01/2026'` sorts before `'01/05/2026'` as text. See
+[Dates & times](/docs/functions/dates) for storing and comparing dates properly.
+
+## Boolean-ish values
+
+There's no universal `BOOLEAN`. Postgres has a real boolean type; MySQL's
+`BOOLEAN` is an alias for `TINYINT(1)` (so `TRUE`/`1`/`'1'` may all compare
+differently depending on context); SQLite has no boolean type at all — `TRUE`
+and `FALSE` are just the integers `1` and `0`. A predicate like
+`WHERE is_active = 'true'` (comparing to the *string*) can silently never
+match on an engine where the column is a real integer or boolean type.
+
+## Gotchas
+
+- **Implicit casts hide bugs, not fix them.** A comparison that "just works"
+  today can break the moment the column's type or the engine changes.
+- **Casting the wrong side is a common perf trap.** `CAST(text_col AS INT) = 5`
+  can't use an index on `text_col`; if the column is queried this way often,
+  fix the column's type instead of casting every query.
+- **`=` vs `IS`** — some engines (Postgres) distinguish boolean comparison
+  operators; `IS TRUE` / `IS NOT TRUE` are NULL-safe where `= TRUE` isn't.
+
+<Related>
+- [MIN / MAX](/docs/functions/min-max) — the text-sort gotcha in the context of an aggregate.
+- [WHERE](/docs/core/where) — how a coerced comparison interacts with three-valued logic.
+- [Dates & times](/docs/functions/dates) — storing dates as a real date type instead of text.
+</Related>
+
+## Safety checklist
+
+- confirm every compared/joined/ordered column is the type you think it is
+- cast explicitly rather than relying on an engine's implicit conversion
+- if a cast shows up in a hot WHERE/JOIN condition, fix the column type instead of casting per-query
