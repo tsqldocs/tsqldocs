@@ -1,6 +1,6 @@
 ---
 title: SUM
-description: Aggregate values across a set of rows and return their total.
+description: Total a set of values — ignoring NULLs, and only as trustworthy as the grain you grouped by.
 ---
 
 ## Syntax
@@ -9,34 +9,67 @@ description: Aggregate values across a set of rows and return their total.
 SUM(expression)
 ```
 
+<Parameters>
+  <Param name="expression" type="numeric" required>
+    The values to add. `NULL`s are skipped, not treated as zero.
+  </Param>
+</Parameters>
+
 ## What it does
 
-`SUM()` adds values across rows in a group. It is commonly used for totals, revenue, and aggregate reporting.
+`SUM()` adds values across the rows in a group.
 
-## Example
-
-```sql
-SELECT
+<SqlRunner query={`SELECT
   customer_id,
   SUM(amount) AS lifetime_value
 FROM orders
-GROUP BY customer_id;
-```
+GROUP BY customer_id
+ORDER BY lifetime_value DESC;`} />
 
-## Important behavior
+## NULLs are skipped, not zeroed
 
-- `SUM()` ignores `NULL` values in the input expression
-- if all values are `NULL`, the result is `NULL`
-- use `COALESCE` when you need a numeric fallback instead of `NULL`
+<SqlRunner query={`SELECT
+  SUM(amount)                    AS sum_ignores_null,
+  SUM(COALESCE(amount, 0))       AS sum_with_null_as_zero,
+  COUNT(*)                       AS rows,
+  COUNT(amount)                  AS non_null_rows
+FROM orders;`} />
 
-## Common gotchas
+If every value in the group is `NULL`, `SUM()` returns `NULL`, not `0` — wrap it
+in `COALESCE(SUM(x), 0)` if a numeric zero is what a downstream chart or diff
+expects.
 
-- `SUM()` changes the grain of the result set unless combined with a window function
-- grouping logic must be intentional and consistent with the business definition of a segment
-- row counts and sums may disagree if filtered rows are excluded before aggregation
+## Summing a subset
+
+Same `CASE`-inside-aggregate trick as [COUNT](/docs/functions/count):
+
+<SqlRunner query={`SELECT
+  SUM(CASE WHEN status = 'paid'     THEN amount ELSE 0 END) AS paid_total,
+  SUM(CASE WHEN status = 'refunded' THEN amount ELSE 0 END) AS refunded_total
+FROM orders;`} />
+
+Use `ELSE 0` here (not the default `NULL`) — `SUM` skips `NULL`s, so the wrong
+`ELSE` would just as quietly do the right thing, but `0` makes the intent
+explicit. See [Pivot without PIVOT](/docs/recipes/pivot) for the full pattern.
+
+## Gotchas
+
+- **Fan-out inflates sums silently.** If a join duplicates rows before the
+  `SUM`, the total is wrong with no error — see
+  [INNER JOIN: fan-out](/docs/joins/inner-join#fan-out-the-row-count-can-grow).
+- **The grain has to be intentional.** `SUM()` collapses rows into whatever
+  `GROUP BY` (or the whole result, with none) says the grain is.
+- **Row counts and sums can disagree** if a `WHERE` filter excludes rows before
+  aggregation but a report elsewhere doesn't apply the same filter.
+
+<Related>
+- [AVG](/docs/functions/avg) — SUM divided by a NULL-aware COUNT.
+- [Running totals](/docs/recipes/running-totals) — SUM as a window function instead of a collapsing aggregate.
+- [GROUP BY](/docs/core/group-by) — the grain SUM is computed over.
+</Related>
 
 ## Safety checklist
 
 - confirm the intended grouping before aggregating
-- decide whether `NULL` should be treated as zero or excluded
-- validate the returned total against expected business numbers before shipping
+- decide whether NULL should be treated as zero or excluded
+- validate the total against expected business numbers, especially after a join

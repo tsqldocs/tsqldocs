@@ -1,6 +1,6 @@
 ---
 title: AVG
-description: Average a set of values, and know how NULL and integer division change the result.
+description: Average a set of values — NULLs are excluded from both the sum and the count, not treated as zero.
 ---
 
 ## Syntax
@@ -9,34 +9,65 @@ description: Average a set of values, and know how NULL and integer division cha
 AVG(expression)
 ```
 
+<Parameters>
+  <Param name="expression" type="numeric" required>
+    The values to average. Equivalent to `SUM(expression) / COUNT(expression)`
+    — both skip `NULL` rows the same way.
+  </Param>
+</Parameters>
+
 ## What it does
 
-`AVG()` returns the mean of the non-`NULL` values in a group: `SUM(expression) / COUNT(expression)`. Rows where the expression is `NULL` are excluded from **both** the sum and the count.
+<SqlRunner query={`SELECT
+  customer_id,
+  ROUND(AVG(amount), 2) AS avg_order_value
+FROM orders
+GROUP BY customer_id
+ORDER BY customer_id;`} />
 
-## Example
+## NULL isn't zero
+
+<SqlRunner query={`SELECT
+  AVG(amount)               AS avg_ignores_null,
+  AVG(COALESCE(amount, 0))  AS avg_with_null_as_zero
+FROM orders
+WHERE customer_id = 4;`} />
+
+Customer 4 has one order of `$1000`. If any order's `amount` were `NULL`,
+`AVG(amount)` would still average only the non-`NULL` rows — it does **not**
+divide by the total row count. `AVG(10, NULL, 20)` is `15`, not `10`.
+
+## Integer division
+
+On some engines, averaging an integer column with integer arithmetic floors
+the result. Cast to a decimal/float type if you need fractional precision:
 
 ```sql
-SELECT
-  product_id,
-  AVG(rating) AS avg_rating
-FROM reviews
-GROUP BY product_id;
+AVG(CAST(quantity AS DECIMAL))  -- or AVG(quantity * 1.0)
 ```
 
-## Important behavior
+SQLite and Postgres promote automatically for `AVG()`; this mostly bites on
+engines that do strict integer division elsewhere in the same expression.
 
-- `NULL` values are ignored, not treated as `0` — `AVG` of `10, NULL, 20` is `15`, not `10`
-- if every value is `NULL`, the result is `NULL`
-- to average with `NULL` counted as zero, use `AVG(COALESCE(expression, 0))` or `SUM(expression) / COUNT(*)`
-- on integer columns some engines do integer division — cast to a decimal type when you need fractional precision
+## Gotchas
 
-## Common gotchas
+- **"Average of averages" isn't the overall average** unless every group has
+  the same number of rows. Weight it: `SUM(total) / SUM(count)`, not
+  `AVG(group_avg)`.
+- **Outliers skew AVG** more than they skew `MIN`/`MAX`/`MEDIAN`-style
+  measures — a report built on `AVG` alone can hide a long tail.
+- **Missing rows silently change the denominator.** A filter that drops rows
+  before `AVG` runs shrinks both the sum and the count together — the average
+  itself may look unaffected even though the underlying data changed a lot.
 
-- an unfiltered `AVG` over a table with many missing values can look higher or lower than expected because of the excluded rows
-- averaging a column that is itself an average ("average of averages") is not the same as the overall average — weight it instead
+<Related>
+- [SUM](/docs/functions/sum) — the numerator AVG is built on.
+- [COUNT](/docs/functions/count) — the NULL-aware denominator.
+- [Running totals & moving averages](/docs/recipes/running-totals) — AVG as a rolling window instead of a collapsing aggregate.
+</Related>
 
 ## Safety checklist
 
 - decide whether missing values should be excluded or counted as zero
-- confirm the column type does not force integer division
+- confirm the column type doesn't force integer division
 - verify the denominator is the row set you intend (`COUNT(expression)` vs `COUNT(*)`)

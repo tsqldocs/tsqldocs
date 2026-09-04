@@ -1,6 +1,6 @@
 ---
 title: Running total
-description: Use a window aggregate to keep row-granularity while calculating cumulative values.
+description: A windowed SUM keeps row-level detail while accumulating — the simplest window function to start with.
 ---
 
 ## Syntax
@@ -12,26 +12,33 @@ SUM(expression) OVER (
 )
 ```
 
-## Example
+<Parameters>
+  <Param name="ORDER BY" type="expression [ASC|DESC], …" required>
+    Defines the accumulation order. With an `ORDER BY` and no explicit frame,
+    the window defaults to "start of partition through the current row" —
+    which is exactly a running total.
+  </Param>
+  <Param name="PARTITION BY" type="expression, …">
+    Optional. Restarts the total per group instead of running across everything.
+  </Param>
+</Parameters>
 
-```sql
-SELECT
+## What it does
+
+<SqlRunner query={`SELECT
   month,
   revenue,
-  SUM(revenue) OVER (
-    ORDER BY month
-  ) AS running_total
-FROM monthly_revenue;
-```
+  SUM(revenue) OVER (ORDER BY month) AS running_total
+FROM monthly_revenue
+ORDER BY month;`} />
 
-## What this does
+Each row keeps its own `revenue`, but `running_total` is the sum of every row
+up to and including it. This is the core difference from `GROUP BY`, which
+would collapse the months into a single summed row.
 
-The `SUM` is evaluated as a window over the ordered rows, so each row keeps its own identity while also showing the cumulative total up to that point.
+## Per group
 
-## Common pattern
-
-```sql
-SELECT
+<SqlRunner query={`SELECT
   customer_id,
   order_date,
   amount,
@@ -39,11 +46,31 @@ SELECT
     PARTITION BY customer_id
     ORDER BY order_date
   ) AS running_customer_total
-FROM orders;
-```
+FROM orders
+ORDER BY customer_id, order_date;`} />
+
+`PARTITION BY customer_id` resets the accumulation at each customer boundary
+instead of running across the whole table.
+
+## Gotchas
+
+- **This is the *default* frame, not a special case.** Any `ORDER BY` inside
+  `OVER (…)` without an explicit `ROWS`/`RANGE` clause behaves this way — see
+  [window frames](/docs/windows/frames) for what changes if you add one.
+- **Ties in `ORDER BY`** are included together as one step under the default
+  `RANGE` frame — two same-day orders both get the post-both total, not two
+  different intermediate values.
+- **Without `PARTITION BY`**, the total runs across the *entire* result set —
+  easy to do by accident when you meant to reset it per group.
+
+<Related>
+- [Window frames](/docs/windows/frames) — ROWS vs RANGE, and why the default frame behaves this way.
+- [Running totals & moving averages](/docs/recipes/running-totals) — moving averages, percent-of-total, and month-over-month change built on the same idea.
+- [LAG / LEAD](/docs/windows/lag-lead) — comparing to one specific prior row instead of accumulating all of them.
+</Related>
 
 ## Safety check before shipping
 
-- confirm the ordering is intentional and stable
-- decide whether a partition is desired
-- check whether the cumulative total should reset per group or continue across the full set
+- confirm the ordering is intentional and deterministic
+- decide whether the total should reset per group (add PARTITION BY) or run across the full set
+- check how ties in the ORDER BY column are meant to behave

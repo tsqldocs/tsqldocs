@@ -1,6 +1,6 @@
 ---
 title: LAG / LEAD
-description: Read a value from a previous or following row without a self-join.
+description: Read a value from a previous or following row without a self-join — the basis of period-over-period comparisons.
 ---
 
 ## Syntax
@@ -14,41 +14,76 @@ LAG(expression [, offset [, default]]) OVER (
 LEAD(expression [, offset [, default]]) OVER ( ... )
 ```
 
+<Parameters>
+  <Param name="expression" type="any" required>
+    The value to read from the neighbouring row.
+  </Param>
+  <Param name="offset" type="integer">
+    How many rows back (`LAG`) or forward (`LEAD`) to look. Defaults to `1`.
+  </Param>
+  <Param name="default" type="same type as expression">
+    Returned when there's no such row (start/end of partition). Defaults to `NULL`.
+  </Param>
+</Parameters>
+
 ## What it does
 
-`LAG()` returns `expression` from the row `offset` positions **before** the current row in the window order; `LEAD()` looks `offset` positions **after**. `offset` defaults to `1`. When there is no such row the result is `default`, or `NULL` if no default is given.
+`LAG()` returns `expression` from `offset` rows **before** the current row in
+the window's order; `LEAD()` looks `offset` rows **after**.
 
-## Example
-
-```sql
-SELECT
+<SqlRunner query={`SELECT
   month,
   revenue,
+  LAG(revenue) OVER (ORDER BY month)  AS prev_month_revenue,
   revenue - LAG(revenue) OVER (ORDER BY month) AS mom_change
-FROM monthly_revenue;
-```
+FROM monthly_revenue
+ORDER BY month;`} />
 
-## Per-group comparison
+January has no prior row, so `prev_month_revenue` and `mom_change` are `NULL`
+there — usually the right behavior, since there's nothing to compare against.
 
-```sql
-SELECT
+## Per partition
+
+<SqlRunner query={`SELECT
   customer_id,
   order_date,
-  order_date - LAG(order_date) OVER (
+  order_id,
+  LAG(order_id) OVER (
     PARTITION BY customer_id
-    ORDER BY order_date
-  ) AS days_since_previous
-FROM orders;
-```
+    ORDER BY order_date, order_id
+  ) AS prev_order_id
+FROM orders
+ORDER BY customer_id, order_date;`} />
 
-## Common pitfalls
+`PARTITION BY customer_id` means `LAG` never looks across a customer boundary
+— the first order for each customer correctly has no "previous" order.
 
-- the first row of each partition has no prior row — `LAG` returns `NULL` (or your `default`) there, and subtracting from it yields `NULL`
-- the window `ORDER BY` defines "previous"; without a stable tiebreaker, ties make the neighbour arbitrary
-- `PARTITION BY` resets the lookback at each group boundary — leave it out only if you really want to read across groups
+## Supplying a default instead of NULL
+
+<SqlRunner query={`SELECT
+  month,
+  revenue,
+  LAG(revenue, 1, 0) OVER (ORDER BY month) AS prev_month_or_zero
+FROM monthly_revenue
+ORDER BY month;`} />
+
+## Gotchas
+
+- **The window `ORDER BY` defines "previous"** — without a deterministic
+  order (add a tiebreaker), the row `LAG` picks on a tie is arbitrary.
+- **Boundary rows need a decision.** `NULL`, `0`, or a supplied `default` all
+  mean different things downstream — pick deliberately, don't let it default silently.
+- **`PARTITION BY` resets the lookback.** Omit it only when you actually want
+  to read across group boundaries.
+
+<Related>
+- [Running total](/docs/windows/running-total) — the other common "compare across rows" window function.
+- [Gaps and islands](/docs/recipes/gaps-and-islands) — LAG used to detect jumps in a sequence.
+- [Running totals & moving averages](/docs/recipes/running-totals) — LAG for month-over-month percent change.
+</Related>
 
 ## Safety check before shipping
 
-- decide what the boundary rows should show — `NULL`, `0`, or a supplied default
-- confirm the window `ORDER BY` is deterministic
+- decide what the boundary rows should show — NULL, 0, or a supplied default
+- confirm the window ORDER BY is deterministic
 - check whether the comparison should reset per partition

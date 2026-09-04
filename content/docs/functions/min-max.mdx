@@ -1,6 +1,6 @@
 ---
 title: MIN / MAX
-description: Return the smallest or largest value in a group, including for text and dates.
+description: The smallest or largest value in a group — for numbers, dates, and text — and how to get the whole row that owns it.
 ---
 
 ## Syntax
@@ -10,48 +10,65 @@ MIN(expression)
 MAX(expression)
 ```
 
+<Parameters>
+  <Param name="expression" type="any orderable type" required>
+    Numbers, dates, or text. `NULL`s are ignored; text compares lexicographically.
+  </Param>
+</Parameters>
+
 ## What it does
 
-`MIN()` returns the smallest value in a group and `MAX()` the largest. Both ignore `NULL` values, and both work on numbers, dates, and text (text compares lexicographically by the column collation).
-
-## Example
-
-```sql
-SELECT
+<SqlRunner query={`SELECT
   customer_id,
   MIN(order_date) AS first_order,
   MAX(order_date) AS last_order,
-  MAX(amount) AS largest_order
+  MAX(amount)     AS largest_order
 FROM orders
-GROUP BY customer_id;
-```
+GROUP BY customer_id
+ORDER BY customer_id;`} />
 
-## Important behavior
+## MIN/MAX don't tell you the rest of the row
 
-- `NULL` values are ignored; if every value is `NULL`, the result is `NULL`
-- `MAX` on a `varchar` orders `'10'` before `'9'` — cast to a number when the column holds numeric text
-- `MIN`/`MAX` do not tell you which row the value came from; use `ROW_NUMBER()` or a correlated filter for that
+`MAX(amount)` above is the largest amount **per customer** — it doesn't say
+which `order_id` that was, and other columns in the same `SELECT` aren't
+guaranteed to line up with it. To get the full row that owns the extreme
+value, rank and filter instead:
 
-## Getting the row that owns the extreme value
-
-```sql
-SELECT customer_id, order_id, amount
+<SqlRunner query={`SELECT customer_id, order_id, amount
 FROM (
-  SELECT
-    customer_id,
-    order_id,
-    amount,
+  SELECT o.*,
     ROW_NUMBER() OVER (
       PARTITION BY customer_id
       ORDER BY amount DESC, order_id DESC
     ) AS rn
-  FROM orders
+  FROM orders o
 ) ranked
-WHERE rn = 1;
-```
+WHERE rn = 1
+ORDER BY customer_id;`} />
+
+This is the [top N per group](/docs/recipes/top-n-per-group) pattern with N = 1.
+
+## Text sorts lexicographically
+
+`MAX('9')` is greater than `MAX('10')` as **text** — `'9' > '10'` character by
+character. If a column holding numeric-looking text is compared this way,
+cast it: `MAX(CAST(code AS INTEGER))`.
+
+## Gotchas
+
+- **NULLs are ignored**; a group of all-`NULL` values returns `NULL`.
+- **Text vs numeric sort order** — confirm the column type sorts the way the
+  query assumes.
+- **Don't assume other `SELECT`ed columns match the MAX row** — see above.
+
+<Related>
+- [Top N per group](/docs/recipes/top-n-per-group) — the general form of "the row with the max value."
+- [ORDER BY](/docs/core/order-by) — the same NULL-ordering and type-sorting rules apply here.
+- [Running totals & moving averages](/docs/recipes/running-totals) — MIN/MAX as window functions with a frame.
+</Related>
 
 ## Safety checklist
 
 - confirm the column type sorts the way you expect (numeric vs text vs date)
-- decide whether a group of all-`NULL` values should yield `NULL` or a fallback
-- if you need the full row, rank it — do not assume other columns in the `SELECT` line up with the `MAX`
+- decide whether an all-NULL group should yield NULL or a fallback
+- rank the rows if you need the whole row, don't assume other columns line up

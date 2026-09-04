@@ -1,6 +1,6 @@
 ---
 title: NTILE
-description: Split ordered rows into a fixed number of buckets for quartiles, deciles, and cohorts.
+description: Split ordered rows into a fixed number of buckets — quartiles, deciles, cohorts — by row count, not by value.
 ---
 
 ## Syntax
@@ -12,31 +12,64 @@ NTILE(bucket_count) OVER (
 )
 ```
 
+<Parameters>
+  <Param name="bucket_count" type="integer" required>
+    How many groups to split the rows into.
+  </Param>
+  <Param name="ORDER BY" type="expression [ASC|DESC], …" required>
+    The ordering that determines which rows land in bucket 1 vs the last bucket.
+  </Param>
+</Parameters>
+
 ## What it does
 
-`NTILE(n)` distributes the ordered rows into `n` groups as evenly as possible and returns the bucket number (`1` to `n`) for each row. When the row count does not divide evenly, the earlier buckets get one extra row each.
+`NTILE(n)` distributes ordered rows into `n` groups as evenly as possible and
+returns each row's bucket number (`1` to `n`). Combine it with `GROUP BY` to
+bucket an aggregate, like a per-customer total:
 
-## Example
-
-```sql
-SELECT
+<SqlRunner query={`SELECT
   customer_id,
-  lifetime_value,
-  NTILE(4) OVER (ORDER BY lifetime_value DESC) AS value_quartile
-FROM customer_totals;
-```
+  SUM(amount) AS lifetime_value,
+  NTILE(4) OVER (ORDER BY SUM(amount) DESC) AS value_quartile
+FROM orders
+GROUP BY customer_id
+ORDER BY value_quartile, lifetime_value DESC;`} />
 
-Quartile `1` here is the highest-value 25% of customers.
+Quartile `1` is the top-spending 25% of customers by this ordering.
 
-## Common pitfalls
+## Uneven buckets
 
-- `NTILE` splits by **row count**, not by value — two rows with the same value can land in different buckets
-- with fewer rows than buckets, some bucket numbers are never assigned and the last rows still get low numbers
-- changing the row set (a filter, a new day of data) reshuffles bucket boundaries, so buckets are not stable over time
-- if you need value-based thresholds (for example "spend over $1,000"), use `CASE`, not `NTILE`
+5 customers into 4 buckets can't divide evenly — **earlier buckets absorb the
+extra rows**:
+
+<SqlRunner query={`SELECT employee_id, name, salary,
+  NTILE(3) OVER (ORDER BY salary DESC) AS tier
+FROM employees
+ORDER BY tier, salary DESC;`} />
+
+7 employees into 3 buckets gives sizes 3/2/2, not 3/3/1 — the first bucket(s)
+get the remainder, one row at a time, front-loaded.
+
+## Gotchas
+
+- **Splits by row count, not by value.** Two rows with the same value can land
+  in different buckets if the split happens to fall between them — `NTILE`
+  doesn't know or care that they're tied.
+- **Bucket boundaries shift when the data does.** Add a row, delete a row, or
+  filter differently, and the same customer can land in a different quartile
+  next time — buckets aren't stable identifiers.
+- **For a fixed value threshold** ("customers who spent over $1,000"), use
+  `CASE`/`WHERE`, not `NTILE` — `NTILE` only knows about rank position, not
+  the actual value gap between buckets.
+
+<Related>
+- [ROW_NUMBER](/docs/functions/row_number) — the plain per-row counter NTILE is built from.
+- [Top N per group](/docs/recipes/top-n-per-group) — when you want a fixed cutoff instead of even buckets.
+- [Window frames](/docs/windows/frames) — NTILE ignores the frame clause; it only reads PARTITION BY/ORDER BY.
+</Related>
 
 ## Safety check before shipping
 
 - confirm you want equal-sized groups rather than fixed value cutoffs
-- decide how ties on the boundary should be handled, and add a tiebreaker to the `ORDER BY`
+- decide how ties on a bucket boundary should be handled — add a tiebreaker to ORDER BY
 - document that bucket membership changes when the underlying data changes
