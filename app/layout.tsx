@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google';
 import Script from 'next/script';
 import type { Metadata } from 'next';
 import { appName, siteUrl } from '@/lib/shared';
+import { SiteFooter } from '@/components/site-footer';
 
 // Cloudflare Web Analytics. Set NEXT_PUBLIC_CF_BEACON_TOKEN at build time to
 // enable — leave it unset if you turn analytics on via the Cloudflare
@@ -41,7 +42,10 @@ export default function Layout({ children }: LayoutProps<'/'>) {
             __html: 'globalThis.__name||(globalThis.__name=function(f){return f});',
           }}
         />
-        <RootProvider>{children}</RootProvider>
+        <RootProvider>
+          {children}
+          <SiteFooter />
+        </RootProvider>
         {cfBeaconToken && (
           <Script
             src="https://static.cloudflareinsights.com/beacon.min.js"
