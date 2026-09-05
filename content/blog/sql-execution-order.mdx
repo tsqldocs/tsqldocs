@@ -1,0 +1,168 @@
+---
+title: The order SQL actually runs in
+description: You write SELECT first, but it runs almost last. The logical processing order, and the errors that stop being mysterious once you know it.
+date: "2026-09-05"
+tags: ["fundamentals", "guide"]
+---
+
+A SQL query is written in one order and executed in another. Almost every
+"why doesn't this work" error — an alias that isn't recognized, an aggregate
+that's rejected, a window function that throws — is the database telling you
+that the thing you referenced doesn't exist *yet* at the step where you used
+it. Learn the step order and those errors stop being mysterious.
+
+## The order the engine actually uses
+
+Regardless of how you write it, a `SELECT` is logically processed roughly
+like this:
+
+1. **`FROM` / `JOIN`** — assemble the working set of rows from the source
+   tables.
+2. **`WHERE`** — throw away rows that don't match. No groups exist yet, no
+   aggregates, no `SELECT` aliases.
+3. **`GROUP BY`** — collapse the surviving rows into one row per distinct
+   group key.
+4. **`HAVING`** — throw away whole groups that don't match. Aggregates are
+   available here because groups now exist.
+5. **Window functions** — `ROW_NUMBER`, `SUM(...) OVER (...)`, etc., computed
+   over the grouped/filtered result.
+6. **`SELECT`** — evaluate the output expressions and assign their aliases.
+   This is where `amount * 1.1 AS with_tax` first *means* anything.
+7. **`DISTINCT`** — drop duplicate output rows.
+8. **`ORDER BY`** — sort. Because it runs after `SELECT`, it *can* see
+   aliases.
+9. **`LIMIT` / `OFFSET`** — take the final slice.
+
+You write step 6 first. The engine runs it seventh. Everything below follows
+from that gap.
+
+## Why WHERE can't see a SELECT alias
+
+```sql
+SELECT amount * 1.1 AS with_tax
+FROM orders
+WHERE with_tax > 100;   -- error on Postgres, SQL Server, MySQL
+```
+
+`WHERE` is step 2; the alias `with_tax` isn't created until step 6. On most
+engines this is a hard error (`column "with_tax" does not exist`). The fix is
+to repeat the expression, or wrap the query in a subquery / CTE so the alias
+exists in the outer step:
+
+```sql
+SELECT * FROM (
+  SELECT amount * 1.1 AS with_tax FROM orders
+) t
+WHERE with_tax > 100;
+```
+
+<Callout type="warn">
+SQLite — and therefore the playground on this site — is unusually lenient
+here and *will* let you use an output alias in `WHERE`. That's a portability
+trap: a query that runs fine in the playground can still break on Postgres or
+SQL Server for exactly this reason. The execution-order rule is the one to
+internalize; SQLite bending it doesn't make it safe to rely on.
+</Callout>
+
+## Why you can't filter an aggregate in WHERE
+
+<SqlRunner query={`SELECT customer_id, SUM(amount) AS total
+FROM orders
+WHERE SUM(amount) > 300
+GROUP BY customer_id;`} />
+
+`misuse of aggregate` — `WHERE` (step 2) runs before `GROUP BY` (step 3), so
+there are no groups to sum over yet. Filtering on an aggregate is what
+`HAVING` (step 4) is for:
+
+<SqlRunner query={`SELECT customer_id, SUM(amount) AS total
+FROM orders
+GROUP BY customer_id
+HAVING SUM(amount) > 300
+ORDER BY total DESC;`} />
+
+## Why a window function in WHERE is an error
+
+<SqlRunner query={`SELECT
+  customer_id,
+  amount,
+  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY amount DESC) AS rn
+FROM orders
+WHERE ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY amount DESC) = 1;`} />
+
+`misuse of window function` — window functions are step 5, after `WHERE`.
+There's no way to filter on one in the same query level. Push it down a
+level with a CTE and filter in the outer query, where step 6's alias is
+visible to the outer step 2:
+
+<SqlRunner query={`WITH ranked AS (
+  SELECT
+    customer_id,
+    amount,
+    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY amount DESC) AS rn
+  FROM orders
+)
+SELECT customer_id, amount
+FROM ranked
+WHERE rn = 1
+ORDER BY customer_id;`} />
+
+This is exactly why the [top-N-per-group](/docs/recipes/top-n-per-group)
+recipe is always written as a subquery or CTE — there's no shorter form.
+
+## Why WHERE filters rows and HAVING filters groups
+
+They look similar but sit on opposite sides of `GROUP BY`, so they mean
+different things. `WHERE` decides which rows *go into* the groups:
+
+<SqlRunner query={`SELECT customer_id, COUNT(*) AS paid_orders, SUM(amount) AS paid_total
+FROM orders
+WHERE status = 'paid'
+GROUP BY customer_id
+ORDER BY customer_id;`} />
+
+Every count and sum here is over paid orders only — the refunded and pending
+rows were gone before grouping happened. Move that same condition to
+`HAVING` and it would instead keep every row in the group and then drop
+groups by an aggregate condition. Most queries want `WHERE` for row
+conditions and `HAVING` only for conditions on aggregates — and you can use
+both at once, `WHERE` first, then `HAVING`.
+
+## The one place aliases do work early: ORDER BY
+
+Because `ORDER BY` is step 8 — after `SELECT` — it can see output aliases,
+on every engine:
+
+<SqlRunner query={`SELECT
+  customer_id,
+  SUM(amount) AS total,
+  COUNT(*)    AS orders
+FROM orders
+GROUP BY customer_id
+ORDER BY total DESC, orders DESC;`} />
+
+`ORDER BY total` works where `WHERE total > x` wouldn't, and it's not an
+inconsistency — it's the step order showing through.
+
+## Quick reference
+
+| Step | Clause | What's available to reference |
+| --- | --- | --- |
+| 1 | `FROM` / `JOIN` | source table columns |
+| 2 | `WHERE` | source columns only — no aliases, no aggregates, no window fns |
+| 3 | `GROUP BY` | source columns |
+| 4 | `HAVING` | source columns + aggregates |
+| 5 | window functions | aggregates + group keys |
+| 6 | `SELECT` | everything above; aliases get created here |
+| 7 | `DISTINCT` | the output rows |
+| 8 | `ORDER BY` | output columns **including aliases** |
+| 9 | `LIMIT` / `OFFSET` | — |
+
+<Related>
+- [WHERE](/docs/core/where) and [HAVING](/docs/core/having) — the two filter steps, before and after grouping.
+- [GROUP BY](/docs/core/group-by) — the collapse step in the middle.
+- [Subqueries](/docs/core/subqueries) and [CTEs](/docs/core/cte) — how to add a step so a later-stage value becomes filterable.
+- [Query Doctor](/fix) — paste a query that's failing for one of these reasons and get the specific fix.
+</Related>
+
+<TryPlayground>The aggregate and window-function errors above are real — run them, then run the fixed version underneath.</TryPlayground>
