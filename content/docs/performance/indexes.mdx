@@ -1,0 +1,133 @@
+---
+title: Indexes
+description: What an index actually does, and the patterns that quietly stop the planner from using one.
+---
+
+## Syntax
+
+```sql
+CREATE INDEX index_name ON table_name (column1, column2, ...);
+CREATE UNIQUE INDEX index_name ON table_name (column1, ...);
+```
+
+<Parameters>
+  <Param name="index_name" type="identifier" required>
+    A name for the index. Never referenced directly in queries — the planner
+    picks whether to use it on its own.
+  </Param>
+  <Param name="table_name (columns)" type="identifier, identifiers" required>
+    The table and the column(s) to index, in order. Order matters for a
+    multi-column index — see leftmost-prefix below.
+  </Param>
+  <Param name="UNIQUE" type="modifier">
+    Also enforces that no two rows share the same value(s) in the indexed
+    column(s) — a constraint, not just an optimization.
+  </Param>
+</Parameters>
+
+## What it does
+
+Without an index, finding rows matching a condition means checking every row
+— a **scan**. An index is a separate, sorted structure (a B-tree, in nearly
+every engine) mapping column values to row locations, so the engine can jump
+straight to matching rows instead — a **search**. `EXPLAIN QUERY PLAN` on the
+[next page](/docs/performance/explain) shows exactly which one happened.
+
+## Before: a full scan
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders_noidx;
+CREATE TABLE scratch_orders_noidx AS SELECT * FROM orders;
+
+EXPLAIN QUERY PLAN
+SELECT * FROM scratch_orders_noidx WHERE customer_id = 5;`} />
+
+`SCAN scratch_orders_noidx` — every row gets checked. Fine on a handful of
+rows; on a large table, this is the query that shows up in the slow-query log.
+
+## After: an index turns it into a search
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders_idx;
+CREATE TABLE scratch_orders_idx AS SELECT * FROM orders;
+CREATE INDEX idx_scratch_customer ON scratch_orders_idx(customer_id);
+
+EXPLAIN QUERY PLAN
+SELECT * FROM scratch_orders_idx WHERE customer_id = 5;`} />
+
+Same table, same query, one difference: `SEARCH ... USING INDEX
+idx_scratch_customer (customer_id=?)` instead of a scan. That's the entire
+value proposition of an index in one line of output.
+
+## Composite indexes and the leftmost-prefix rule
+
+A multi-column index is only useful for filters that start from its
+**leftmost** column(s) — it can't be used to jump straight to a match on a
+later column alone.
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders_composite;
+CREATE TABLE scratch_orders_composite AS SELECT * FROM orders;
+CREATE INDEX idx_scratch_composite ON scratch_orders_composite(customer_id, order_date);
+
+EXPLAIN QUERY PLAN
+SELECT * FROM scratch_orders_composite
+WHERE customer_id = 5 AND order_date = '2026-01-30';`} />
+
+Filtering on both columns, leading with `customer_id` — the index is used
+for both conditions at once.
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders_composite2;
+CREATE TABLE scratch_orders_composite2 AS SELECT * FROM orders;
+CREATE INDEX idx_scratch_composite2 ON scratch_orders_composite2(customer_id, order_date);
+
+EXPLAIN QUERY PLAN
+SELECT * FROM scratch_orders_composite2
+WHERE order_date = '2026-01-30';`} />
+
+Same index, but filtering on `order_date` alone — the *second* column — and
+it falls back to a full scan. The index `(customer_id, order_date)` is sorted
+by `customer_id` first, so there's no way to jump to an `order_date` match
+without knowing `customer_id` too. If both columns get filtered independently
+in different queries, that's two indexes, not one.
+
+## A pattern that silently defeats an index
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders_fn;
+CREATE TABLE scratch_orders_fn AS SELECT * FROM orders;
+CREATE INDEX idx_scratch_fn ON scratch_orders_fn(customer_id);
+
+EXPLAIN QUERY PLAN
+SELECT * FROM scratch_orders_fn WHERE customer_id + 0 = 5;`} />
+
+The index on `customer_id` exists, but wrapping the column in an expression
+(`customer_id + 0`, or `LOWER(some_text_col)`, or a leading-wildcard
+`LIKE '%x'`) means the engine would have to evaluate that expression for
+*every row* to know which ones match — there's no way to look that up in an
+index built on the raw column. Back to a scan. Rewrite the condition so the
+indexed column is compared bare, or build the index on the expression itself
+(most engines support that: `CREATE INDEX ... ON t(LOWER(col))`).
+
+## Gotchas
+
+- **Indexes aren't free.** Every `INSERT`/`UPDATE`/`DELETE` that touches an
+  indexed column has to update every index on that column too. A table with
+  ten indexes has a much slower write path than one with two — index only
+  the columns actually filtered, joined, or sorted on.
+- **The planner might ignore your index anyway**, even without an expression
+  wrapping the column — if the table is small, or the value isn't selective
+  (e.g. a `status` column with only three distinct values across a million
+  rows), a scan can genuinely be cheaper than the overhead of a lookup.
+  That's not a bug; verify with `EXPLAIN`, don't assume.
+- **A `UNIQUE` index is also a constraint.** Adding one to a column with
+  existing duplicate values fails outright — clean up the duplicates first.
+
+<Related>
+- [Reading query plans](/docs/performance/explain) — how to check whether an index actually got used, on any engine.
+- [WHERE](/docs/core/where) — the filters an index needs to match to be useful.
+- [Type coercion](/docs/core/type-coercion) — an implicit type mismatch on an indexed column is another common way to silently lose index usage.
+</Related>
+
+## Safety checklist
+
+- verify with `EXPLAIN` before *and* after adding an index — don't assume it helped
+- index the columns actually used in `WHERE`, `JOIN ON`, and `ORDER BY` — not just "the ID"
+- for a multi-column index, order columns by how they're actually filtered, leftmost first
+- weigh write-path cost before adding an index to a heavily-written table

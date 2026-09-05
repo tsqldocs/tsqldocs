@@ -9,6 +9,7 @@
     "functions",
     "joins",
     "windows",
+    "performance",
     "---Writing & transactions---",
     "dml",
     "transactions",

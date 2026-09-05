@@ -1,0 +1,24 @@
+---
+title: Performance
+description: Indexes and query plans — how to make a query fast, and how to check whether it actually worked.
+---
+
+Every page up to this point is about getting the *right* answer. This section
+is about getting it back quickly, and — just as important — knowing how to
+check.
+
+<Cards>
+  <Card title="Indexes" description="What an index actually does, and the patterns that quietly stop the planner from using one." href="/docs/performance/indexes" />
+  <Card title="Reading query plans" description="EXPLAIN across engines — what a scan vs. a search actually means, and what to look for." href="/docs/performance/explain" />
+</Cards>
+
+## Playground note
+
+The playground can run `CREATE INDEX` and `EXPLAIN QUERY PLAN` for real —
+SQLite's query planner behaves like any other engine's at a conceptual level,
+choosing a table scan or an index the same way Postgres, MySQL, or SQL Server
+would. Every example here builds its own scratch copy of a seed table before
+adding an index to it, so nothing here changes how any other page's examples
+behave.
+
+<TryPlayground>Want to experiment freely? The playground is the same SQLite engine, no guardrails.</TryPlayground>

@@ -1,0 +1,112 @@
+---
+title: Reading query plans
+description: EXPLAIN across engines — what a scan vs. a search actually means, and what to look for.
+---
+
+`EXPLAIN` asks the engine to show *how* it intends to run a query, instead of
+(or in addition to) actually running it. The syntax is different everywhere;
+the concept — and mostly what you're looking for in the output — isn't.
+
+## Syntax by engine
+
+```sql
+-- SQLite: plan only, never executes
+EXPLAIN QUERY PLAN SELECT ...;
+
+-- Postgres: plan only
+EXPLAIN SELECT ...;
+-- Postgres: actually runs the query, adds real timing (careful with writes — see below)
+EXPLAIN ANALYZE SELECT ...;
+
+-- MySQL: plan only
+EXPLAIN SELECT ...;
+-- MySQL 8+: adds real timing, like Postgres's ANALYZE
+EXPLAIN ANALYZE SELECT ...;
+
+-- SQL Server: plan only, no execution (run alongside the query in SSMS)
+SET SHOWPLAN_ALL ON;
+-- SQL Server: actual execution plan with real row counts
+SET STATISTICS PROFILE ON;
+```
+
+<Parameters>
+  <Param name="EXPLAIN" type="statement" required>
+    Shows the planned approach — table access method, join order, join
+    algorithm — without necessarily running anything.
+  </Param>
+  <Param name="ANALYZE / STATISTICS PROFILE" type="modifier">
+    Actually executes the query and reports real row counts and timing
+    alongside the plan, instead of the planner's estimates.
+  </Param>
+</Parameters>
+
+## Scan vs. search
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders_plan;
+CREATE TABLE scratch_orders_plan AS SELECT * FROM orders;
+
+EXPLAIN QUERY PLAN
+SELECT * FROM scratch_orders_plan WHERE customer_id = 5;`} />
+
+`SCAN scratch_orders_plan` — every row is checked one by one. This is the
+line to worry about on a table with real volume: a scan's cost grows with
+table size, a search barely does.
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders_plan2;
+CREATE TABLE scratch_orders_plan2 AS SELECT * FROM orders;
+CREATE INDEX idx_scratch_plan ON scratch_orders_plan2(customer_id);
+
+EXPLAIN QUERY PLAN
+SELECT * FROM scratch_orders_plan2 WHERE customer_id = 5;`} />
+
+`SEARCH ... USING INDEX idx_scratch_plan (customer_id=?)` — the same query
+against an indexed copy. That word swap, `SCAN` → `SEARCH`, is the single
+most important thing to check after adding an index: did it actually change
+the plan, or is the engine still ignoring it?
+
+## What to look for, regardless of engine
+
+- **Scan vs. index operation.** Called `SCAN` (SQLite), `Seq Scan` (Postgres),
+  `ALL` (MySQL's `type` column), or a `Table Scan`/`Clustered Index Scan`
+  (SQL Server) — all mean "every row checked." Their index-using counterparts
+  are `SEARCH`, `Index Scan`/`Index Only Scan`, `ref`/`range`/`const`, and
+  `Index Seek`, respectively.
+- **Join algorithm**, when more than one table is involved — nested loop
+  (fine for small inputs, bad for large ones on both sides), hash join
+  (needs to build a hash table in memory), or merge join (needs sorted
+  input). The wrong one for the data size is a common source of a slow query
+  that "should" be fast.
+- **Estimated vs. actual row counts**, when running an `ANALYZE` variant that
+  reports both. A large gap between them means the engine's statistics are
+  stale — it's choosing a plan based on a guess that's wrong, which often
+  means it's time to update statistics (`ANALYZE` as its own statement in
+  Postgres/SQLite, `UPDATE STATISTICS` in SQL Server).
+- **Where the time actually goes.** With real timing available, find the
+  single most expensive node rather than trying to read the whole plan
+  — that's almost always where the fix belongs.
+
+## Gotchas
+
+- **`EXPLAIN` alone shows a plan, not a guarantee.** The planner can and does
+  change its choice between runs as data grows or statistics update — a plan
+  captured once isn't permanent proof a query will always be fast.
+- **`EXPLAIN ANALYZE` (or `STATISTICS PROFILE`) really executes the query.**
+  On a `SELECT` that's harmless. On an `UPDATE`, `DELETE`, or anything else
+  with side effects, it is **not** a dry run — it performs the write. Wrap it
+  in a transaction you intend to roll back if you need to see the plan for a
+  mutating statement without committing to it.
+- **Read plans from the innermost node out.** The deepest/rightmost operation
+  in a nested plan runs first; everything above it consumes that operation's
+  output. Reading top-down first is the most common way people misread which
+  part actually runs slow.
+
+<Related>
+- [Indexes](/docs/performance/indexes) — what usually turns a scan into a search.
+- [BEGIN, COMMIT, ROLLBACK](/docs/transactions/basics) — how to safely run `EXPLAIN ANALYZE` on a mutating statement without committing it.
+</Related>
+
+## Safety checklist
+
+- confirm an index change actually flipped a scan to a search — don't assume from the `CREATE INDEX` alone
+- wrap `EXPLAIN ANALYZE` (or equivalent) around a mutating statement in a transaction you can roll back
+- re-check the plan periodically on a table that's grown significantly — yesterday's plan isn't guaranteed today's
