@@ -1,0 +1,187 @@
+---
+title: String functions
+description: Concatenate, slice, trim, search, and replace text — with the dialect differences that make string SQL surprisingly unportable.
+---
+
+<Callout type="warn">
+String functions look simple but vary a lot between engines — names, argument
+order, and whether a function exists at all. The runnable examples use SQLite
+(what the playground runs); the Postgres / MySQL / SQL Server equivalents are
+noted inline. A few standard forms don't run in SQLite and are shown as
+static code.
+</Callout>
+
+## Concatenation
+
+<SqlRunner query={`SELECT name || ' (' || country || ')' AS label
+FROM customers
+ORDER BY customer_id
+LIMIT 4;`} />
+
+`||` is the SQL standard operator (Postgres, SQLite, Oracle, and SQL Server
+2012+ support it; MySQL does **not** — it reads `||` as logical OR unless
+`PIPES_AS_CONCAT` is set). The portable function is `CONCAT(...)`, supported
+by Postgres, MySQL, and SQL Server.
+
+The catch is `NULL`:
+
+<SqlRunner query={`SELECT
+  'x' || NULL || 'y'        AS with_pipes,
+  CONCAT('x', NULL, 'y')    AS with_concat;`} />
+
+`||` propagates `NULL` — one `NULL` input makes the whole result `NULL`.
+`CONCAT()` treats `NULL` as an empty string. If you want a separator between
+non-null parts, `CONCAT_WS(sep, ...)` skips the nulls:
+`CONCAT_WS('-', a, b, c)`.
+
+## Length
+
+<SqlRunner query={`SELECT name, length(name) AS len
+FROM customers
+ORDER BY len DESC
+LIMIT 4;`} />
+
+| Engine | Characters | Bytes |
+| --- | --- | --- |
+| SQLite | `length(s)` | `length(CAST(s AS BLOB))` |
+| Postgres | `length(s)` / `char_length(s)` | `octet_length(s)` |
+| MySQL | `CHAR_LENGTH(s)` | `LENGTH(s)` |
+| SQL Server | `LEN(s)` — **ignores trailing spaces** | `DATALENGTH(s)` |
+
+The SQL Server `LEN` trailing-space quirk bites people: `LEN('hi   ')` is
+`2`, not `5`. Use `DATALENGTH` or `LEN(s + '|') - 1` if trailing spaces
+matter.
+
+## Upper and lower case
+
+<SqlRunner query={`SELECT
+  upper(country)      AS up,
+  lower(name)         AS down
+FROM customers
+WHERE customer_id = 1;`} />
+
+`UPPER` / `LOWER` are the same everywhere. (Case-*insensitive comparison* is
+better done with the engine's collation than by upper-casing both sides in
+every query.)
+
+## Trimming
+
+<SqlRunner query={`SELECT
+  '[' || trim('   spaced out   ') || ']'  AS trimmed,
+  '[' || ltrim('   left')        || ']'   AS left_only,
+  '[' || rtrim('right   ')       || ']'   AS right_only,
+  trim('xxhelloxx', 'x')                  AS trim_chars;`} />
+
+`TRIM` / `LTRIM` / `RTRIM` remove whitespace by default. To trim a specific
+character set, SQLite takes a second argument: `trim(s, 'x')`. The SQL
+standard spells it `TRIM(BOTH 'x' FROM s)` (Postgres, MySQL, Oracle); SQL
+Server only gained `TRIM(chars FROM s)` in 2022.
+
+## Substrings
+
+<SqlRunner query={`SELECT
+  substr('abcdef', 2, 3)   AS from_middle,
+  substr('abcdef', -2, 2)  AS from_end;`} />
+
+`substr(s, start, length)` — **positions are 1-indexed**, and a negative
+start counts back from the end. The standard spelling is
+`SUBSTRING(s FROM start FOR length)` (Postgres, MySQL); SQL Server uses
+`SUBSTRING(s, start, length)`.
+
+For the first or last *n* characters, most engines have `LEFT(s, n)` /
+`RIGHT(s, n)` — but **SQLite has neither**. The equivalents there are
+`substr(s, 1, n)` and `substr(s, -n)`.
+
+## Finding a position
+
+<SqlRunner query={`SELECT
+  instr('user@example.com', '@')  AS at_pos,
+  instr('no-at-sign', '@')        AS not_found;`} />
+
+Returns a **1-indexed** position, or `0` when the substring isn't present.
+The name is the least portable part:
+
+| Engine | Function |
+| --- | --- |
+| SQLite, MySQL, Oracle | `INSTR(haystack, needle)` |
+| Postgres | `POSITION(needle IN haystack)` or `STRPOS(haystack, needle)` |
+| SQL Server | `CHARINDEX(needle, haystack)` |
+
+Note MySQL's `INSTR` and SQLite's take arguments in `(haystack, needle)`
+order, but `POSITION` reads `needle IN haystack` — easy to flip.
+
+## Replacing
+
+<SqlRunner query={`SELECT replace('2026.09.05', '.', '-') AS iso_date;`} />
+
+`REPLACE(s, from, to)` replaces **every** occurrence, and is consistent
+across all four engines. There's no "replace first only" — for that you're
+into `substr` + `instr` arithmetic or a regex function.
+
+## Padding
+
+`LPAD(s, len, pad)` / `RPAD(s, len, pad)` exist in Postgres, MySQL, and
+Oracle, but **not in SQLite or SQL Server**. In SQLite, `printf` (aliased
+`format` in 3.44+) covers the common case:
+
+<SqlRunner query={`SELECT
+  printf('%05d', customer_id)  AS zero_padded,
+  printf('%-12s|', name)       AS left_aligned
+FROM customers
+ORDER BY customer_id
+LIMIT 3;`} />
+
+## Splitting on a delimiter
+
+Genuinely not portable — there's no standard, and SQLite has nothing
+built in:
+
+```sql
+-- Postgres: 1-indexed, returns one part
+SPLIT_PART('a,b,c', ',', 2)              -- 'b'
+
+-- MySQL: returns everything up to the Nth delimiter
+SUBSTRING_INDEX('a,b,c', ',', 2)         -- 'a,b'
+SUBSTRING_INDEX(SUBSTRING_INDEX('a,b,c', ',', 2), ',', -1)  -- 'b'
+
+-- SQL Server: returns a one-column table (use in FROM / APPLY)
+SELECT value FROM STRING_SPLIT('a,b,c', ',')
+```
+
+In SQLite you build it by hand with `instr` + `substr`:
+
+<SqlRunner query={`SELECT
+  name,
+  CASE
+    WHEN instr(name, ' ') > 0
+    THEN substr(name, 1, instr(name, ' ') - 1)
+    ELSE name
+  END AS first_word
+FROM customers
+ORDER BY customer_id;`} />
+
+## Gotchas
+
+- **Positions are 1-indexed** in every engine's string functions —
+  `substr(s, 1, n)` starts at the first character, not the second.
+- **`||` vs `CONCAT` disagree on `NULL`** — `||` gives `NULL` if any operand
+  is `NULL`; `CONCAT` treats `NULL` as `''`. Pick deliberately.
+- **`LEFT` / `RIGHT` / `LPAD` / `RPAD` aren't universal** — missing from
+  SQLite (all four) and SQL Server (the pad functions). Reach for `substr`
+  or `printf` there.
+- **`LEN` ignores trailing spaces** on SQL Server; `LENGTH` elsewhere does
+  not. This changes comparisons and padding math.
+- **Byte length ≠ character length** for non-ASCII text. Know which one the
+  function you're calling returns.
+
+<Related>
+- [COALESCE](/docs/functions/coalesce) — supply a fallback before concatenating a possibly-null column.
+- [CASE](/docs/core/case) — the branching behind a hand-rolled split or "replace first only".
+- [Type coercion](/docs/core/type-coercion) — what happens when a number lands in a string function, or vice versa.
+</Related>
+
+## Safety checklist
+
+- decide `||` vs `CONCAT` based on how you want `NULL` handled, and be consistent
+- remember positions are 1-indexed when translating from a zero-indexed language
+- before shipping, check every string function you used exists on the target engine — several don't

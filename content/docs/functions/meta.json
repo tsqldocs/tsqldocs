@@ -12,6 +12,8 @@
     "min-max",
     "---Scalar---",
     "coalesce",
+    "---Text---",
+    "strings",
     "---Date & time---",
     "dates"
   ]
