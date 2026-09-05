@@ -139,7 +139,7 @@ export default function HomePage() {
           <p className="mb-2 text-center text-xs font-medium uppercase tracking-[0.12em] text-fd-muted-foreground">
             This runs real SQLite — edit it
           </p>
-          <SqlRunner query={HERO_QUERY} />
+          <SqlRunner query={HERO_QUERY} deferInit />
         </div>
       </section>
 

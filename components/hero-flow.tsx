@@ -7,6 +7,10 @@ import { useEffect, useRef } from 'react';
 // out — the density gradient reads as a twisted ribbon in space. No
 // dependencies, theme-aware, and static (one frame) under
 // prefers-reduced-motion.
+//
+// Kept cheap so it never fights the scroll thread: ~30fps, skips frames
+// while the page is being scrolled, and stops entirely whenever the hero is
+// off-screen or the tab is hidden.
 export function HeroFlow() {
   const ref = useRef<HTMLCanvasElement>(null);
 
@@ -20,9 +24,18 @@ export function HeroFlow() {
     let w = 0;
     let h = 0;
     let raf = 0;
-    let running = true;
     let primary = '#0891b2';
     let dark = false;
+
+    // gates
+    let onScreen = true;
+    let tabVisible = document.visibilityState === 'visible';
+    let scrolling = false;
+    let scrollTimer = 0;
+    let lastDraw = 0;
+    const FRAME_MS = 33; // ~30fps is plenty for a background flow
+
+    const active = () => onScreen && tabVisible && !reduced.matches;
 
     const readTheme = () => {
       const root = document.documentElement;
@@ -36,7 +49,7 @@ export function HeroFlow() {
 
     const resize = () => {
       const r = canvas.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       w = r.width;
       h = r.height;
       canvas.width = Math.max(1, Math.floor(w * dpr));
@@ -44,11 +57,8 @@ export function HeroFlow() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
-    const STEPS = 40;
+    const STEPS = 34;
 
-    // One fan of curves radiating from (ox, oy) toward `angle`, spreading by
-    // `spread` radians, each line twisting on its own phase. A single
-    // gradient is built per fan (along its axis) and reused for every line.
     const drawFan = (
       t: number,
       ox: number,
@@ -74,7 +84,7 @@ export function HeroFlow() {
       ctx.strokeStyle = g;
 
       for (let i = 0; i < lines; i++) {
-        const f = i / (lines - 1); // 0..1 across the fan
+        const f = i / (lines - 1);
         const lineAngle = angle + spread * (f - 0.5);
         const twist = 0.16 * (0.4 + f);
         const phase = t * 0.00022 + i * 0.19;
@@ -83,7 +93,7 @@ export function HeroFlow() {
         ctx.beginPath();
         for (let s = 0; s <= STEPS; s++) {
           const u = s / STEPS;
-          const r = Math.pow(u, 0.82) * reach; // bunch near the origin
+          const r = Math.pow(u, 0.82) * reach;
           const a =
             lineAngle +
             twist * Math.sin(u * Math.PI * 1.6 + phase) +
@@ -94,9 +104,7 @@ export function HeroFlow() {
           else ctx.lineTo(x, y);
         }
 
-        // wide soft pass then crisp bright pass — stacks into a glow under
-        // the "lighter" composite in dark mode
-        ctx.lineWidth = accent ? 5 : 3.5;
+        ctx.lineWidth = accent ? 4 : 3;
         ctx.globalAlpha = (dark ? 0.05 : 0.03) * strength;
         ctx.stroke();
         ctx.lineWidth = accent ? 1.5 : 1;
@@ -108,73 +116,74 @@ export function HeroFlow() {
     const draw = (t: number) => {
       ctx.clearRect(0, 0, w, h);
       ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
-
       const diag = Math.hypot(w, h);
-      // main fan — from just past the top-right corner, sweeping down-left
       drawFan(t, w * 1.02, h * -0.06, Math.PI * 0.82, 0.62, diag * 1.15, 16, 1);
-      // counter fan — from the bottom-left corner, sweeping up-right, fainter
       drawFan(t * 0.9, w * -0.04, h * 1.08, -Math.PI * 0.2, 0.5, diag * 1.0, 10, 0.5);
-
       ctx.globalAlpha = 1;
     };
 
     const tick = (t: number) => {
-      if (!running) return;
-      draw(t);
       raf = requestAnimationFrame(tick);
+      if (!active()) return;
+      if (scrolling) return; // don't compete with the scroll thread
+      if (t - lastDraw < FRAME_MS) return;
+      lastDraw = t;
+      draw(t);
     };
 
     readTheme();
     resize();
-    if (reduced.matches) draw(0);
-    else raf = requestAnimationFrame(tick);
+    draw(0);
+    if (!reduced.matches) raf = requestAnimationFrame(tick);
+
+    // --- gates ---
+    const io = new IntersectionObserver(
+      (entries) => {
+        onScreen = entries[0]?.isIntersecting ?? true;
+      },
+      { rootMargin: '120px' },
+    );
+    io.observe(canvas);
 
     const ro = new ResizeObserver(() => {
       resize();
-      if (reduced.matches) draw(0);
+      draw(performance.now());
     });
     ro.observe(canvas);
 
+    const onScroll = () => {
+      scrolling = true;
+      clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(() => {
+        scrolling = false;
+      }, 160);
+    };
     const onVis = () => {
-      const vis = document.visibilityState === 'visible';
-      if (vis && !running && !reduced.matches) {
-        running = true;
-        raf = requestAnimationFrame(tick);
-      } else if (!vis) {
-        running = false;
-        cancelAnimationFrame(raf);
-      }
+      tabVisible = document.visibilityState === 'visible';
     };
     const onTheme = () => {
       readTheme();
-      if (reduced.matches) draw(0);
-    };
-    const onReducedChange = () => {
-      if (reduced.matches) {
-        running = false;
-        cancelAnimationFrame(raf);
-        draw(0);
-      } else if (!running) {
-        running = true;
-        raf = requestAnimationFrame(tick);
-      }
+      draw(performance.now());
     };
 
+    window.addEventListener('scroll', onScroll, { passive: true });
     document.addEventListener('visibilitychange', onVis);
     const mo = new MutationObserver(onTheme);
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     const colorMq = window.matchMedia('(prefers-color-scheme: dark)');
     colorMq.addEventListener('change', onTheme);
-    reduced.addEventListener('change', onReducedChange);
+    reduced.addEventListener('change', onTheme);
 
     return () => {
-      running = false;
       cancelAnimationFrame(raf);
+      clearTimeout(scrollTimer);
+      io.disconnect();
       ro.disconnect();
       mo.disconnect();
+      window.removeEventListener('scroll', onScroll);
       document.removeEventListener('visibilitychange', onVis);
       colorMq.removeEventListener('change', onTheme);
-      reduced.removeEventListener('change', onReducedChange);
+      reduced.removeEventListener('change', onTheme);
     };
   }, []);
 

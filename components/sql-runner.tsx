@@ -161,7 +161,16 @@ type RunState =
   | { status: 'ok'; results: SqlJsResult[]; ms: number }
   | { status: 'error'; message: string };
 
-export function SqlRunner({ query = DEFAULT_QUERY }: { query?: string }) {
+export function SqlRunner({
+  query = DEFAULT_QUERY,
+  deferInit = false,
+}: {
+  query?: string;
+  // Skip the on-mount sql.js warm-up. Used on the homepage so the hero
+  // doesn't pull ~1MB of WASM onto the critical path for visitors who never
+  // run a query — the first Run click pays the init cost instead.
+  deferInit?: boolean;
+}) {
   const [sql, setSql] = useState(query.trim());
   const [state, setState] = useState<RunState>({ status: 'idle' });
   const [showSchema, setShowSchema] = useState(false);
@@ -223,8 +232,9 @@ export function SqlRunner({ query = DEFAULT_QUERY }: { query?: string }) {
 
   // Warm up sql.js in the background so the first run feels instant.
   useEffect(() => {
+    if (deferInit) return;
     void getDatabase().catch(() => {});
-  }, []);
+  }, [deferInit]);
 
   return (
     <div className="not-prose my-6 overflow-hidden rounded-xl border border-fd-border bg-fd-card">
