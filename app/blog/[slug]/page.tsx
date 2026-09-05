@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getMDXComponents } from '@/components/mdx';
 import { BlogTOC } from '@/components/blog-toc';
+import { ReadingProgress } from '@/components/reading-progress';
 import { blog, blogSlug, formatBlogDate, getBlogPost } from '@/lib/blog-source';
 import { siteUrl } from '@/lib/shared';
 
@@ -14,6 +15,7 @@ export default async function BlogPostPage(props: PageProps<'/blog/[slug]'>) {
 
   return (
     <main className="mx-auto flex w-full max-w-6xl gap-10 px-6 py-12 md:py-16">
+      <ReadingProgress />
       <article className="prose min-w-0 flex-1">
         <p className="text-sm text-fd-muted-foreground">{formatBlogDate(post.date)}</p>
         <h1 className="text-[1.75em] font-semibold">{post.title}</h1>
