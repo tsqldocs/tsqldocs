@@ -1,8 +1,14 @@
 import { RootProvider } from 'fumadocs-ui/provider/next';
 import './global.css';
 import { Inter } from 'next/font/google';
+import Script from 'next/script';
 import type { Metadata } from 'next';
 import { appName, siteUrl } from '@/lib/shared';
+
+// Cloudflare Web Analytics. Set NEXT_PUBLIC_CF_BEACON_TOKEN at build time to
+// enable — leave it unset if you turn analytics on via the Cloudflare
+// dashboard instead (that auto-injects its own beacon; don't run both).
+const cfBeaconToken = process.env.NEXT_PUBLIC_CF_BEACON_TOKEN;
 
 const inter = Inter({
   subsets: ['latin'],
@@ -36,6 +42,13 @@ export default function Layout({ children }: LayoutProps<'/'>) {
           }}
         />
         <RootProvider>{children}</RootProvider>
+        {cfBeaconToken && (
+          <Script
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            strategy="afterInteractive"
+            data-cf-beacon={`{"token": "${cfBeaconToken}"}`}
+          />
+        )}
       </body>
     </html>
   );
