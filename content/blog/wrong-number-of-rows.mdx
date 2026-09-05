@@ -1,0 +1,138 @@
+---
+title: Why your query returns the wrong number of rows
+description: Two causes account for almost all of it — a join that multiplied rows, and a WHERE that deleted them. Both are easy to see once you know where to look.
+date: "2026-09-05"
+tags: ["joins", "troubleshooting"]
+---
+
+You run a query, glance at the row count, and it's wrong — too many, or
+fewer than you know are in the table. Nearly every case comes down to one of
+two things: a join multiplied your rows, or a `WHERE` clause quietly deleted
+some. Here's how to spot each.
+
+## Cause 1: a join multiplied your rows
+
+A `JOIN` produces one row per matching pair. If the join key isn't unique on
+the other side, every row gets duplicated once per match.
+
+<SqlRunner query={`SELECT COUNT(*) AS customer_count FROM customers;`} />
+
+Seven customers. Now join in their orders:
+
+<SqlRunner query={`SELECT COUNT(*) AS row_count
+FROM customers c
+JOIN orders o ON o.customer_id = c.customer_id;`} />
+
+Eleven rows — one per *order*, not per customer. Customer 1 has three orders,
+so "Acme Corp" now appears in the result three times. This is called
+**fan-out**, and it's harmless until you aggregate something from the
+customer side, at which point it's counted once per order.
+
+### The same question, three different answers
+
+"How many customers per country?" — three queries that all look reasonable:
+
+<SqlRunner query={`SELECT c.country, COUNT(*) AS n
+FROM customers c
+JOIN orders o ON o.customer_id = c.customer_id
+GROUP BY c.country
+ORDER BY c.country;`} />
+
+`US` = 8? That's counting *orders* placed by US customers, after fan-out.
+`COUNT(DISTINCT ...)` counts the thing you actually meant:
+
+<SqlRunner query={`SELECT c.country, COUNT(DISTINCT c.customer_id) AS n
+FROM customers c
+JOIN orders o ON o.customer_id = c.customer_id
+GROUP BY c.country
+ORDER BY c.country;`} />
+
+`US` = 3 now — but this only counts customers who have *at least one* order.
+If the question was really "how many customers per country," the orders
+table shouldn't be in the query at all:
+
+<SqlRunner query={`SELECT country, COUNT(*) AS n
+FROM customers
+GROUP BY country
+ORDER BY country;`} />
+
+`US` = 4. Three different numbers — `8`, `3`, `4` — from three queries that
+each look like they answer the question. The fix isn't a clever function,
+it's deciding what grain the result is supposed to be at and not joining in
+tables that change it.
+
+### Fixing fan-out
+
+- **Only need columns from one table?** Don't join the other one.
+- **Need an aggregate from the "many" side?** Aggregate it in a subquery
+  first, then join the one-row-per-key result.
+- **Counting distinct things?** `COUNT(DISTINCT id)` — but know that it also
+  excludes anything with zero matches.
+
+## Cause 2: a WHERE clause deleted the rows
+
+A `LEFT JOIN` keeps every row from the left table, matched or not:
+
+<SqlRunner query={`SELECT c.name, o.order_id
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.customer_id
+WHERE o.order_id IS NULL;`} />
+
+Two customers have no orders at all. A `LEFT JOIN` keeps them, with `NULL`
+in every `orders` column. Now add what looks like a harmless filter:
+
+<SqlRunner query={`SELECT COUNT(DISTINCT c.customer_id) AS customers_shown
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.customer_id
+WHERE o.status = 'paid';`} />
+
+Four. Not seven. The two customers with no orders have `NULL` for
+`o.status`, and `NULL = 'paid'` is not true — so `WHERE` drops them. So does
+the customer whose only order is `pending`. The `LEFT JOIN` did its job and
+then `WHERE` undid it: **a condition on an outer-joined table's column turns
+a `LEFT JOIN` back into an `INNER JOIN`**, plus an extra filter.
+
+### Fixing it
+
+Move the condition into the `ON` clause, where it filters *what gets joined*
+instead of *what survives*:
+
+<SqlRunner query={`SELECT c.name, COUNT(o.order_id) AS paid_orders
+FROM customers c
+LEFT JOIN orders o
+  ON o.customer_id = c.customer_id
+  AND o.status = 'paid'
+GROUP BY c.name
+ORDER BY c.name;`} />
+
+All seven customers, and the ones with no paid orders correctly show `0`
+instead of vanishing. If the condition genuinely has to be in `WHERE`, the
+other option is to let `NULL` through explicitly: `WHERE o.status = 'paid'
+OR o.status IS NULL`.
+
+## DISTINCT is a symptom-hider, not a fix
+
+Adding `DISTINCT` to a fanned-out query collapses the duplicate rows and
+makes the count look right — but any `SUM`, `AVG`, or `COUNT` in that same
+query was computed *before* the de-duplication, over the multiplied rows, so
+it's still wrong. `DISTINCT` on a result you didn't expect to have
+duplicates is a sign the join grain is off; fix that instead.
+
+## How to diagnose it in 30 seconds
+
+1. `SELECT COUNT(*)` on the base table. Note the number.
+2. Add each join one at a time, re-running `COUNT(*)`. The join that changes
+   the count more than you expected is your fan-out.
+3. Check whether the join key is unique on the side being joined *in* — if
+   it isn't, fan-out is possible.
+4. Look at every `WHERE` condition: is it on a column from a `LEFT`/`RIGHT`
+   joined table? If so, it's silently dropping the unmatched rows.
+
+<Related>
+- [INNER JOIN](/docs/joins/inner-join) — how a non-unique key duplicates rows.
+- [LEFT JOIN](/docs/joins/left-join) — the "WHERE on the right table" trap, with more detail.
+- [DISTINCT](/docs/core/distinct) — why it applies to the whole row, and why it's not a grain fix.
+- [Deduplicate rows](/docs/recipes/deduplicate) — when the duplicates are real data, not a join artifact.
+</Related>
+
+<TryPlayground>Run the fan-out and LEFT JOIN examples above, then try adding a third table to see the count move.</TryPlayground>
