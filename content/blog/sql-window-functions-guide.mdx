@@ -1,0 +1,176 @@
+---
+title: The complete guide to SQL window functions
+description: Everything from ROW_NUMBER to custom frames, in one narrative — with the specifics linked back to the reference.
+date: "2026-09-05"
+tags: ["window-functions", "guide"]
+---
+
+Window functions are the single biggest jump in what you can express in a
+`SELECT` without reaching for a self-join or a pile of subqueries — and also
+the feature most people learn one function at a time, in isolation, without
+ever seeing the shape they all share. This is that shape, walked through
+once, start to finish.
+
+## The problem GROUP BY can't solve
+
+`GROUP BY` answers "one row per group." Sometimes you want the group's
+number attached to every original row instead — total sales per category,
+*and* the individual product rows that make it up, together.
+
+<SqlRunner query={`SELECT category_id, SUM(sales) AS category_total
+FROM product_sales
+GROUP BY category_id
+ORDER BY category_id;`} />
+
+Three rows — one per category. The individual products are gone; there's no
+way to get `Widget`'s own sales figure back out of this result. A window
+function keeps both:
+
+<SqlRunner query={`SELECT category_id, product_name, sales,
+  SUM(sales) OVER (PARTITION BY category_id) AS category_total
+FROM product_sales
+ORDER BY category_id, sales DESC;`} />
+
+Same total, but every product row survives, each carrying its category's
+total alongside its own. `SUM(sales) OVER (PARTITION BY category_id)` — this
+is the whole trick. It's the `OVER (...)` clause that makes it a window
+function instead of a regular aggregate.
+
+## The anatomy of OVER()
+
+Every window function shares the same clause, with three optional parts:
+
+```sql
+function_name(...) OVER (
+  PARTITION BY column1, column2, ...   -- reset the window per group
+  ORDER BY column3, ...                -- order rows within each partition
+  ROWS/RANGE BETWEEN ... AND ...       -- which nearby rows are included
+)
+```
+
+`PARTITION BY` is `GROUP BY` without the collapsing — a separate window per
+distinct value. `ORDER BY` inside the parentheses is independent of any
+`ORDER BY` at the end of the query; it controls the order the window
+function itself sees rows in, which matters for ranking and running totals
+but not for a plain `PARTITION BY`-only aggregate like the one above. The
+frame clause (`ROWS`/`RANGE BETWEEN`) is covered near the end — most queries
+don't need to touch it, but it's there for the ones that do.
+
+## Ranking, three ways
+
+Three functions answer "what's this row's position," and they only disagree
+when there's a tie:
+
+<SqlRunner query={`SELECT
+  category_id, product_name, sales,
+  ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY sales DESC) AS row_num,
+  RANK()       OVER (PARTITION BY category_id ORDER BY sales DESC) AS rnk,
+  DENSE_RANK() OVER (PARTITION BY category_id ORDER BY sales DESC) AS dense_rnk
+FROM product_sales
+ORDER BY category_id, sales DESC;`} />
+
+`Widget` and `Gadget` are tied at 400 in category 1 — watch what each column
+does with that tie, then what happens to `Gizmo` right after it.
+
+### ROW_NUMBER — always unique
+
+`1, 2, 3` — every row gets a distinct number regardless of ties, so the tied
+pair gets split arbitrarily (whichever row the engine happens to see first).
+This is the one to reach for when you need exactly one row per group — the
+[top-N-per-group](/docs/recipes/top-n-per-group) pattern is built on it,
+specifically because it can't produce duplicates. Full reference:
+[ROW_NUMBER](/docs/functions/row_number).
+
+### RANK — ties share a rank, then skips
+
+`1, 1, 3` — both tied rows get rank `1`, and the next distinct value jumps to
+`3`, not `2` — the two rows "used up" ranks 1 and 2. This matches how people
+actually rank things colloquially ("we're tied for first, so there's no
+second place"). Full reference: [RANK](/docs/functions/rank).
+
+### DENSE_RANK — ties share a rank, no skip
+
+`1, 1, 2` — same tie handling as `RANK`, but the next distinct value is
+`2`, not `3`. Use this when the rank number needs to double as "how many
+distinct values are at or above this one" — bucketing into a fixed number of
+performance tiers, for example, where a gap would leave a tier empty. Full
+reference: [DENSE_RANK](/docs/functions/dense_rank).
+
+## Running totals and percent-of-group
+
+The same `SUM() OVER` from the intro, ordered instead of just partitioned,
+turns into a running total:
+
+<SqlRunner query={`SELECT
+  month,
+  revenue,
+  SUM(revenue) OVER (ORDER BY month) AS running_total
+FROM monthly_revenue
+ORDER BY month;`} />
+
+And partitioned instead of ordered, it turns into a share-of-group
+calculation — genuinely one of the most useful window function patterns that
+doesn't have its own reference page, because it's really just this one
+combined with basic arithmetic:
+
+<SqlRunner query={`SELECT category_id, product_name, sales,
+  ROUND(100.0 * sales / SUM(sales) OVER (PARTITION BY category_id), 1) AS pct_of_category
+FROM product_sales
+ORDER BY category_id, sales DESC;`} />
+
+Full running-total reference, including the year-to-date and reset-per-group
+variants: [Running total](/docs/windows/running-total).
+
+## Comparing to a previous row: LAG and LEAD
+
+`LAG` reads a value from an earlier row in the same ordered window without a
+self-join; `LEAD` reads ahead. Both take an optional offset and default —
+`LAG(revenue, 1, 0)` means "one row back, or `0` if there isn't one" (the
+first row of the window). This is the basis of every month-over-month or
+period-over-period comparison. Full reference, including the default-value
+form: [LAG / LEAD](/docs/windows/lag-lead).
+
+## Splitting into fixed buckets: NTILE
+
+`NTILE(4)` divides an ordered set into four roughly-equal-sized buckets by
+**row count** — quartiles, quintiles, cohorts — not by value range like a
+manual `CASE WHEN salary > x` ladder would. Full reference:
+[NTILE](/docs/windows/ntile).
+
+## Controlling exactly which rows a window sees: frames
+
+Every example above with an `ORDER BY` inside `OVER (...)` was implicitly
+using the default frame — "everything from the start of the partition to the
+current row." A frame clause makes that explicit and lets you narrow it, for
+a moving average instead of a running total:
+
+<SqlRunner query={`SELECT month, revenue,
+  ROUND(AVG(revenue) OVER (
+    ORDER BY month
+    ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+  ), 0) AS trailing_3mo_avg
+FROM monthly_revenue
+ORDER BY month;`} />
+
+`ROWS BETWEEN 2 PRECEDING AND CURRENT ROW` — this row plus the two before it,
+a rolling 3-month window, instead of every month since the beginning. Full
+reference, including `ROWS` vs `RANGE`: [Window frames](/docs/windows/frames).
+
+## Which one do I actually reach for?
+
+- Need exactly one row per group, no duplicates possible? **`ROW_NUMBER`.**
+- Need a "leaderboard" rank where ties matter and gaps are fine? **`RANK`.**
+- Need a rank that also counts "how many distinct tiers exist"? **`DENSE_RANK`.**
+- Need a cumulative total, or a value as of each row? **`SUM(...) OVER (ORDER BY ...)`.**
+- Need this row's share of its group's total? **`SUM(...) OVER (PARTITION BY ...)`** plus division.
+- Need "what was it last time" without a self-join? **`LAG`** (or `LEAD` for "next time").
+- Need to split ordered rows into N equal-sized buckets? **`NTILE(N)`.**
+- Need a moving average or a trailing window instead of the whole partition? **A frame clause** on any of the above.
+
+<Related>
+- [ROW_NUMBER](/docs/functions/row_number), [RANK](/docs/functions/rank), [DENSE_RANK](/docs/functions/dense_rank) — full reference for each ranking function.
+- [Running total](/docs/windows/running-total), [LAG / LEAD](/docs/windows/lag-lead), [NTILE](/docs/windows/ntile), [Window frames](/docs/windows/frames) — the rest of the window functions section.
+- [Top N per group](/docs/recipes/top-n-per-group) — the most common real-world use of `ROW_NUMBER`.
+</Related>
+
+<TryPlayground>Every query on this page runs against the same seeded database as the reference pages — try changing the partition or frame yourself.</TryPlayground>

@@ -12,6 +12,7 @@ export function baseOptions(): BaseLayoutProps {
       { type: 'main', url: '/docs/recipes', text: 'Recipes' },
       { type: 'main', url: '/docs/playground', text: 'Playground' },
       { type: 'main', url: '/fix', text: 'Query Doctor' },
+      { type: 'main', url: '/blog', text: 'Blog' },
     ],
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
   };
