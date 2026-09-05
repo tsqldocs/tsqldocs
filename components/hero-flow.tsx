@@ -2,9 +2,10 @@
 
 import { useEffect, useRef } from 'react';
 
-// A flowing wire-mesh drawn on canvas for the homepage hero — a set of
-// gently undulating horizontal curves stroked with the site's cyan accent.
-// No dependencies, theme-aware, and static (one frame) under
+// A perspective wire-mesh for the homepage hero: two fans of curves that
+// radiate from off-screen corners, bunched near their origin and spreading
+// out — the density gradient reads as a twisted ribbon in space. No
+// dependencies, theme-aware, and static (one frame) under
 // prefers-reduced-motion.
 export function HeroFlow() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -43,47 +44,77 @@ export function HeroFlow() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
-    const LINES = 22;
-    const STEPS = 56;
-    const SLOPE = -0.14; // lines sweep up toward the right, Mintlify-style
+    const STEPS = 40;
 
-    const draw = (t: number) => {
-      ctx.clearRect(0, 0, w, h);
-      ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
+    // One fan of curves radiating from (ox, oy) toward `angle`, spreading by
+    // `spread` radians, each line twisting on its own phase. A single
+    // gradient is built per fan (along its axis) and reused for every line.
+    const drawFan = (
+      t: number,
+      ox: number,
+      oy: number,
+      angle: number,
+      spread: number,
+      reach: number,
+      lines: number,
+      strength: number,
+    ) => {
       const secondary = dark ? '#7dd3fc' : '#0ea5e9';
+      const g = ctx.createLinearGradient(
+        ox,
+        oy,
+        ox + Math.cos(angle) * reach,
+        oy + Math.sin(angle) * reach,
+      );
+      g.addColorStop(0, 'transparent');
+      g.addColorStop(0.12, primary);
+      g.addColorStop(0.55, secondary);
+      g.addColorStop(0.9, primary);
+      g.addColorStop(1, 'transparent');
+      ctx.strokeStyle = g;
 
-      for (let i = 0; i < LINES; i++) {
-        const p = i / (LINES - 1);
-        const baseY = h * 0.14 + h * 0.86 * p;
-        const amp = 18 + 52 * Math.sin(p * Math.PI);
-        const phase = t * 0.00013 + p * 2;
-        const freq = 1.3 + p * 0.8;
+      for (let i = 0; i < lines; i++) {
+        const f = i / (lines - 1); // 0..1 across the fan
+        const lineAngle = angle + spread * (f - 0.5);
+        const twist = 0.16 * (0.4 + f);
+        const phase = t * 0.00022 + i * 0.19;
+        const accent = i % 3 === 0;
 
         ctx.beginPath();
         for (let s = 0; s <= STEPS; s++) {
           const u = s / STEPS;
-          const x = u * w;
-          const y =
-            baseY +
-            SLOPE * x +
-            amp * Math.sin(u * Math.PI * freq + phase) +
-            amp * 0.35 * Math.sin(u * Math.PI * freq * 2.3 - phase * 1.3);
+          const r = Math.pow(u, 0.82) * reach; // bunch near the origin
+          const a =
+            lineAngle +
+            twist * Math.sin(u * Math.PI * 1.6 + phase) +
+            twist * 0.4 * Math.sin(u * Math.PI * 3.3 - phase * 1.4);
+          const x = ox + Math.cos(a) * r;
+          const y = oy + Math.sin(a) * r;
           if (s === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
 
-        const g = ctx.createLinearGradient(0, 0, w, 0);
-        g.addColorStop(0, 'transparent');
-        g.addColorStop(0.08, primary);
-        g.addColorStop(0.55, secondary);
-        g.addColorStop(0.92, primary);
-        g.addColorStop(1, 'transparent');
-        ctx.strokeStyle = g;
-        const accent = i % 4 === 0;
-        ctx.globalAlpha = (dark ? 0.34 : 0.17) * (accent ? 1.35 : 1);
-        ctx.lineWidth = accent ? 1.9 : 1;
+        // wide soft pass then crisp bright pass — stacks into a glow under
+        // the "lighter" composite in dark mode
+        ctx.lineWidth = accent ? 5 : 3.5;
+        ctx.globalAlpha = (dark ? 0.05 : 0.03) * strength;
+        ctx.stroke();
+        ctx.lineWidth = accent ? 1.5 : 1;
+        ctx.globalAlpha = (dark ? 0.4 : 0.22) * strength * (accent ? 1.3 : 1);
         ctx.stroke();
       }
+    };
+
+    const draw = (t: number) => {
+      ctx.clearRect(0, 0, w, h);
+      ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
+
+      const diag = Math.hypot(w, h);
+      // main fan — from just past the top-right corner, sweeping down-left
+      drawFan(t, w * 1.02, h * -0.06, Math.PI * 0.82, 0.62, diag * 1.15, 16, 1);
+      // counter fan — from the bottom-left corner, sweeping up-right, fainter
+      drawFan(t * 0.9, w * -0.04, h * 1.08, -Math.PI * 0.2, 0.5, diag * 1.0, 10, 0.5);
+
       ctx.globalAlpha = 1;
     };
 
@@ -151,7 +182,7 @@ export function HeroFlow() {
     <canvas
       ref={ref}
       aria-hidden
-      className="absolute inset-0 h-full w-full [mask-image:radial-gradient(ellipse_110%_95%_at_65%_25%,black,transparent_92%)]"
+      className="absolute inset-0 h-full w-full [mask-image:radial-gradient(130%_130%_at_85%_0%,black,transparent_75%)]"
     />
   );
 }
