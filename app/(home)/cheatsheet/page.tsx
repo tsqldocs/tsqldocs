@@ -1,12 +1,34 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRightIcon } from 'lucide-react';
+import { highlight } from 'fumadocs-core/highlight';
 
 export const metadata: Metadata = {
   title: 'SQL cheat sheet',
   description:
     'One-page SQL syntax reference — SELECT, joins, grouping, window functions, CTEs, DML, transactions, and performance — each linking to a page with runnable examples.',
 };
+
+// Build-time Shiki highlight; reuses fumadocs' bundled themes and the CSS in
+// preset.css that swaps token colors on the .dark class. The `!bg-fd-muted`
+// class overrides Shiki's own inline background so code panels match the card.
+async function Snippet({ code }: { code: string }) {
+  return highlight(code, {
+    lang: 'sql',
+    themes: { light: 'github-light', dark: 'github-dark' },
+    // emit --shiki-light / --shiki-dark vars instead of a baked-in color, so
+    // preset.css's `.dark .shiki span` rule can swap tokens on theme change
+    defaultColor: false,
+    components: {
+      pre: ({ className, ...props }) => (
+        <pre
+          {...props}
+          className={`${className ?? ''} mt-3 overflow-x-auto rounded-lg !bg-fd-muted/50 p-3 text-[12px] leading-5`}
+        />
+      ),
+    },
+  });
+}
 
 type Card = {
   title: string;
@@ -323,9 +345,7 @@ export default function CheatsheetPage() {
                       <ArrowRightIcon />
                     </Link>
                   </div>
-                  <pre className="mt-3 overflow-x-auto rounded-lg bg-fd-muted/50 p-3 text-[12px] leading-5 text-fd-foreground">
-                    <code>{card.code}</code>
-                  </pre>
+                  <Snippet code={card.code} />
                   <p className="mt-3 text-xs leading-5 text-fd-muted-foreground">{card.note}</p>
                 </div>
               ))}
