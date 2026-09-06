@@ -1,0 +1,123 @@
+---
+title: EXISTS and IN
+description: Three ways to ask "does a related row exist" — and the NOT IN + NULL trap that silently returns nothing.
+---
+
+"Which customers have placed an order?" has three common forms — `IN`,
+`EXISTS`, and a `JOIN`. For the positive case they behave the same. For the
+*negative* case (`NOT IN`), one of them has a trap that returns an empty
+result with no error.
+
+## IN with a subquery
+
+<SqlRunner query={`SELECT name
+FROM customers
+WHERE customer_id IN (SELECT customer_id FROM orders)
+ORDER BY name;`} />
+
+Reads naturally: keep the customer if their id appears in the list the
+subquery returns.
+
+## EXISTS with a correlated subquery
+
+<SqlRunner query={`SELECT name
+FROM customers c
+WHERE EXISTS (
+  SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id
+)
+ORDER BY name;`} />
+
+Same result. `EXISTS` asks "does the inner query return *any* row for this
+outer row" — it stops at the first match, and it doesn't matter what the
+inner `SELECT` lists, so `SELECT 1` is the convention.
+
+## The NOT IN + NULL trap
+
+`NOT IN` looks like the obvious way to get customers with *no* order. It
+works — until the subquery returns a `NULL`.
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders;
+CREATE TABLE scratch_orders AS SELECT order_id, customer_id FROM orders;
+INSERT INTO scratch_orders (order_id, customer_id) VALUES (999, NULL);
+
+SELECT name
+FROM customers
+WHERE customer_id NOT IN (SELECT customer_id FROM scratch_orders)
+ORDER BY name;`} />
+
+**Zero rows.** There's a `NULL` in `scratch_orders.customer_id`, and
+`customer_id NOT IN (1, 2, ..., NULL)` is `x <> 1 AND x <> 2 AND ... AND x <>
+NULL`. That last comparison is `NULL` (unknown), which makes the whole `AND`
+chain `NULL` for every row — so no row qualifies. The query isn't wrong, it's
+doing exactly what three-valued logic says. It's just never what you meant.
+
+## NOT EXISTS — the safe version
+
+<SqlRunner query={`SELECT name
+FROM customers c
+WHERE NOT EXISTS (
+  SELECT 1 FROM scratch_orders o WHERE o.customer_id = c.customer_id
+)
+ORDER BY name;`} />
+
+`NOT EXISTS` on the same `NULL`-containing table gives the right answer —
+Soylent and Wayne Enterprises. The correlated `o.customer_id = c.customer_id`
+is never true for a `NULL` row, so the `NULL` simply doesn't match anything
+and doesn't poison the result.
+
+If you must use `NOT IN`, filter the nulls out of the subquery yourself:
+
+```sql
+WHERE customer_id NOT IN (
+  SELECT customer_id FROM scratch_orders WHERE customer_id IS NOT NULL
+)
+```
+
+## Or use an anti-join
+
+<SqlRunner query={`SELECT c.name
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.customer_id
+WHERE o.order_id IS NULL
+ORDER BY c.name;`} />
+
+`LEFT JOIN` then `WHERE <right key> IS NULL` keeps only the rows that found
+no match. Filter on a right-side column that can't legitimately be `NULL`
+(a primary key), not on the join key.
+
+## Which to use
+
+| | `IN` / `NOT IN` | `EXISTS` / `NOT EXISTS` | anti-join |
+| --- | --- | --- | --- |
+| Positive ("has a match") | fine | fine | needs `DISTINCT` or `GROUP BY` to avoid fan-out |
+| Negative ("has no match") | **unsafe if the subquery can return `NULL`** | safe | safe |
+| Reads well for | a small literal list | a correlated condition | when you also need columns from the other table |
+| Performance | optimizer usually rewrites `IN`/`EXISTS` to the same plan | same | same |
+
+Modern optimizers treat `IN` and `EXISTS` almost identically, so the choice
+is about `NULL` semantics and readability, not speed. The one firm rule:
+**don't use `NOT IN` with a subquery whose column is nullable.**
+
+## Gotchas
+
+- **`NOT IN` + one `NULL` = empty result**, silently. The positive `IN`
+  isn't affected the same way, which makes the negative case easy to miss.
+- **`EXISTS` ignores the inner `SELECT` list** — `SELECT 1`, `SELECT *`,
+  `SELECT NULL` all behave identically. Don't put work in there.
+- **A bare `IN (a, b, c)` list with a `NULL` literal** has the same problem
+  as the subquery form: `x NOT IN (1, 2, NULL)` is never true.
+- **`IN` with a very large subquery result** can be slower than `EXISTS` on
+  some engines that materialize the list; test if the set is big.
+
+<Related>
+- [NULL handling](/docs/core/nulls) — the three-valued logic that makes `NOT IN` behave this way.
+- [Subqueries](/docs/core/subqueries) — correlated vs. uncorrelated, which `EXISTS` and `IN` are built on.
+- [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — the anti-join pattern in full.
+- [Why your query returns the wrong number of rows](/blog/wrong-number-of-rows) — the fan-out that a semi-join via `JOIN` can introduce.
+</Related>
+
+## Safety checklist
+
+- for "has no match," reach for `NOT EXISTS` (or an anti-join) — not `NOT IN` — unless you've proven the subquery column is non-nullable
+- if you keep `NOT IN`, add `WHERE <col> IS NOT NULL` to the subquery
+- for the positive case, any of the three is fine; pick the one that reads clearest
