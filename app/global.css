@@ -50,9 +50,15 @@
 
 /* The reading column. A bit wider than fumadocs' ~900px default for code blocks
    and the SQL runner; centred in the (full-width) main track so the gutters to
-   the sidebar and TOC stay balanced on wide screens. */
+   the sidebar and TOC stay balanced on wide screens.
+
+   `margin-inline: auto` makes #nd-page shrink-to-fit + centered in its grid
+   cell. `min(980px, 100%)` is the cap so that on mobile — where the cell is
+   the viewport and a rigid Shiki `pre.w-max` would otherwise size the article
+   to ~550px and get clipped by #nd-notebook-layout's overflow-x:clip — the
+   article stays pinned to the cell and the code block scrolls inside instead. */
 #nd-page {
-  max-width: 980px;
+  max-width: min(980px, 100%);
   margin-inline: auto;
 }
 

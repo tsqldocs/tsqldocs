@@ -23,7 +23,7 @@ async function Snippet({ code }: { code: string }) {
       pre: ({ className, ...props }) => (
         <pre
           {...props}
-          className={`${className ?? ''} mt-3 overflow-x-auto rounded-lg !bg-fd-muted/50 p-3 text-[12px] leading-5`}
+          className={`${className ?? ''} mt-3 min-w-0 max-w-full overflow-x-auto rounded-lg !bg-fd-muted/50 p-3 text-[12px] leading-5`}
         />
       ),
     },
@@ -329,11 +329,11 @@ export default function CheatsheetPage() {
             <h2 className="text-xs font-medium uppercase tracking-[0.14em] text-fd-primary">
               {section.heading}
             </h2>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               {section.cards.map((card) => (
                 <div
                   key={card.title}
-                  className="flex flex-col rounded-xl border border-fd-border bg-fd-card p-4"
+                  className="flex min-w-0 flex-col rounded-xl border border-fd-border bg-fd-card p-4"
                 >
                   <div className="flex items-baseline justify-between gap-3">
                     <h3 className="text-sm font-semibold text-fd-foreground">{card.title}</h3>
