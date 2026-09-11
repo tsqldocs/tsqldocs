@@ -1,0 +1,165 @@
+---
+title: Upsert (INSERT ... ON CONFLICT)
+description: Insert a row, or update it if it already exists — one statement, no race between a SELECT and a decision.
+---
+
+"Insert this row, unless it already exists, in which case update it" — a
+genuinely common need with **no standard syntax**. Every engine solves it
+differently.
+
+## Syntax (Postgres, SQLite)
+
+```sql
+INSERT INTO table (col1, col2, ...)
+VALUES (val1, val2, ...)
+ON CONFLICT (conflict_column) DO UPDATE SET col2 = excluded.col2, ...;
+-- or, to silently skip the row instead of updating it:
+ON CONFLICT (conflict_column) DO NOTHING;
+```
+
+<Parameters>
+  <Param name="ON CONFLICT (col)" type="column(s)" required>
+    Which column(s) — normally a `PRIMARY KEY` or `UNIQUE` constraint — count
+    as "this row already exists." Required; there's no conflict to detect
+    without a constraint backing it.
+  </Param>
+  <Param name="DO UPDATE SET ..." type="assignments">
+    What to change on the existing row. `excluded.col` refers to the value
+    the failed `INSERT` was trying to use — the new data.
+  </Param>
+  <Param name="DO NOTHING" type="alternative">
+    Skip the row entirely on conflict instead of updating it. No error, no
+    change.
+  </Param>
+</Parameters>
+
+## Insert or accumulate
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_inventory;
+CREATE TABLE scratch_inventory (
+  product_id   INTEGER PRIMARY KEY,
+  product_name TEXT,
+  stock        INTEGER
+);
+
+-- no existing row for product_id 1 — this inserts
+INSERT INTO scratch_inventory (product_id, product_name, stock)
+VALUES (1, 'Widget', 100)
+ON CONFLICT (product_id) DO UPDATE SET stock = scratch_inventory.stock + excluded.stock;
+
+-- product_id 1 now exists — this updates instead of erroring
+INSERT INTO scratch_inventory (product_id, product_name, stock)
+VALUES (1, 'Widget', 50)
+ON CONFLICT (product_id) DO UPDATE SET stock = scratch_inventory.stock + excluded.stock;
+
+SELECT * FROM scratch_inventory;`} />
+
+Stock ends at `150` — the first `INSERT` created the row, the second hit the
+`PRIMARY KEY` conflict and ran the `UPDATE` instead, adding to the existing
+value via `excluded.stock`. Same statement both times; the engine decided
+which path to take.
+
+## DO NOTHING — skip on conflict
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_inventory2;
+CREATE TABLE scratch_inventory2 (
+  product_id   INTEGER PRIMARY KEY,
+  product_name TEXT,
+  stock        INTEGER
+);
+INSERT INTO scratch_inventory2 VALUES (1, 'Widget', 100);
+
+INSERT INTO scratch_inventory2 (product_id, product_name, stock)
+VALUES (1, 'Widget', 999)
+ON CONFLICT (product_id) DO NOTHING;
+
+SELECT * FROM scratch_inventory2;`} />
+
+Stock stays `100` — the conflicting `999` row is silently discarded, no
+error. Useful for "insert if new, otherwise leave it alone" — importing a
+batch where duplicates are expected and harmless.
+
+## Getting the result back
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_inventory3;
+CREATE TABLE scratch_inventory3 (product_id INTEGER PRIMARY KEY, product_name TEXT, stock INTEGER);
+INSERT INTO scratch_inventory3 VALUES (1, 'Widget', 100);
+
+INSERT INTO scratch_inventory3 (product_id, product_name, stock)
+VALUES (1, 'Widget', 25)
+ON CONFLICT (product_id) DO UPDATE SET stock = scratch_inventory3.stock + excluded.stock
+RETURNING product_id, stock;`} />
+
+`RETURNING` works on the upsert as a whole — it returns the row as it ended
+up, whichever branch ran.
+
+## MySQL: ON DUPLICATE KEY UPDATE
+
+```sql
+INSERT INTO inventory (product_id, product_name, stock)
+VALUES (1, 'Widget', 50)
+ON DUPLICATE KEY UPDATE stock = stock + VALUES(stock);
+```
+
+Same idea, different keyword and a different way to reference the attempted
+values: `VALUES(col)` instead of `excluded.col`. (MySQL 8.0.19+ also allows
+naming the new row — `AS new` — and referencing `new.stock`; `VALUES()` is
+deprecated but still the more commonly seen form.)
+
+## SQL Server / standard SQL: MERGE
+
+```sql
+MERGE INTO inventory AS target
+USING (VALUES (1, 'Widget', 50)) AS source (product_id, product_name, stock)
+ON target.product_id = source.product_id
+WHEN MATCHED THEN
+  UPDATE SET stock = target.stock + source.stock
+WHEN NOT MATCHED THEN
+  INSERT (product_id, product_name, stock)
+  VALUES (source.product_id, source.product_name, source.stock);
+```
+
+`MERGE` is the ANSI-standard form (also on Oracle, Postgres 15+ as an
+alternative to `ON CONFLICT`) and the only option on SQL Server before 2022's
+`OR` clauses. It's more verbose but can match/update/insert/delete across
+several conditions in one statement.
+
+<Callout type="warn">
+SQL Server's `MERGE` has documented concurrency bugs under high-write
+contention (double-inserts, missed updates) without an explicit `SERIALIZABLE`
+hint or a surrounding transaction with appropriate locking. For a plain
+insert-or-update on one key, prefer the newer `UPDATE ... ; IF @@ROWCOUNT = 0
+INSERT ...` pattern or wrap `MERGE` in `HOLDLOCK`.
+</Callout>
+
+## Gotchas
+
+- **The conflict column must be backed by a constraint.** `ON CONFLICT
+  (product_id)` only works because `product_id` is a `PRIMARY KEY`. Without
+  a `UNIQUE`/`PRIMARY KEY` constraint on those columns, there's nothing for
+  the engine to detect a conflict against, and the statement errors.
+- **`excluded`/`VALUES()` refer to the row that was attempted**, not the
+  row that already exists. Get these backwards and an "accumulate" upsert
+  overwrites instead of adding.
+- **A no-op upsert still consumes an auto-increment value on some
+  engines.** `ON DUPLICATE KEY UPDATE` on MySQL can advance
+  `AUTO_INCREMENT` even when nothing changes — don't rely on the ID
+  sequence having no gaps.
+- **Concurrency isn't automatic just because it's one statement.** An
+  upsert is far safer than a separate `SELECT` + branch, but two
+  simultaneous upserts on a brand-new key can still race depending on
+  isolation level — see [Isolation levels](/docs/transactions/isolation-levels).
+
+<Related>
+- [INSERT](/docs/dml/insert) — the plain insert this builds on.
+- [UPDATE](/docs/dml/update) — the update path an upsert can take.
+- [BEGIN, COMMIT, ROLLBACK](/docs/transactions/basics) — wrapping a multi-row upsert batch.
+- [Isolation levels](/docs/transactions/isolation-levels) — what two concurrent upserts can still race on.
+</Related>
+
+## Safety checklist
+
+- confirm a `UNIQUE`/`PRIMARY KEY` constraint actually exists on the conflict column(s)
+- double-check `excluded`/`VALUES()` references point at the new data, not the existing row
+- decide deliberately between `DO UPDATE` (accumulate/overwrite) and `DO NOTHING` (skip duplicates) — they're easy to mix up
+- test the exact syntax on your engine and version — this is one of the least portable corners of SQL
