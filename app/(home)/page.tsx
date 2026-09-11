@@ -3,6 +3,7 @@ import {
   ArrowRightIcon,
   BookOpenIcon,
   GaugeIcon,
+  MapIcon,
   PencilRulerIcon,
   PlayIcon,
   SparklesIcon,
@@ -28,6 +29,12 @@ const sections = [
     title: 'Reference',
     text: 'Core clauses, functions, joins, and window functions — each with the edge cases that break production queries.',
     href: '/docs',
+  },
+  {
+    icon: MapIcon,
+    title: 'Tutorials',
+    text: 'Guided paths through the reference, in order — fundamentals, window functions, writing data, and troubleshooting.',
+    href: '/tutorials',
   },
   {
     icon: TerminalIcon,

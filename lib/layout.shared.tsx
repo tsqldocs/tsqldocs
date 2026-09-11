@@ -9,6 +9,7 @@ export function baseOptions(): BaseLayoutProps {
     },
     links: [
       { type: 'main', url: '/docs', text: 'Docs' },
+      { type: 'main', url: '/tutorials', text: 'Tutorials' },
       { type: 'main', url: '/cheatsheet', text: 'Cheat sheet' },
       { type: 'main', url: '/docs/recipes', text: 'Recipes' },
       { type: 'main', url: '/docs/playground', text: 'Playground' },

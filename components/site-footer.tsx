@@ -7,6 +7,7 @@ const columns: { heading: string; links: { label: string; href: string; external
     heading: 'Docs',
     links: [
       { label: 'Reference', href: '/docs' },
+      { label: 'Tutorials', href: '/tutorials' },
       { label: 'Cheat sheet', href: '/cheatsheet' },
       { label: 'Recipes', href: '/docs/recipes' },
       { label: 'Playground', href: '/docs/playground' },

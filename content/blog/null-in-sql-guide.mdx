@@ -1,0 +1,178 @@
+---
+title: "NULL in SQL: the complete guide"
+description: NULL isn't zero or an empty string — it's "unknown," and that one idea explains a dozen behaviors that otherwise look like bugs.
+date: "2026-09-11"
+tags: ["null", "guide"]
+---
+
+Most SQL surprises trace back to the same root cause: treating `NULL` like a
+value, when it's actually the absence of one. Every behavior on this page
+follows from a single idea — `NULL` means *unknown*, and almost anything you
+do with an unknown produces another unknown.
+
+## Three-valued logic
+
+SQL doesn't have two truth values, it has three: `TRUE`, `FALSE`, and
+`UNKNOWN` (`NULL`, in boolean position). A comparison against an unknown is
+itself unknown — and `AND`/`OR` have special rules for combining an unknown
+with something you *do* know:
+
+<SqlRunner query={`SELECT order_id, status, cancelled_at,
+  (status='pending') AND (cancelled_at='x') AS and_result,
+  (status='pending') OR  (cancelled_at='x') AS or_result
+FROM orders
+WHERE order_id IN (101, 108);`} />
+
+`cancelled_at='x'` is unknown for both rows (`cancelled_at` is `NULL`). Order
+101's status isn't `'pending'` (`FALSE`), so `FALSE AND unknown` = `FALSE` —
+the `AND` short-circuits — but `FALSE OR unknown` can't rule out `TRUE`, so
+it stays unknown (`NULL`). Order 108's status *is* `'pending'` (`TRUE`), so
+it's the mirror image: `TRUE AND unknown` = unknown, `TRUE OR unknown` =
+`TRUE`. `AND`/`OR` each have one input value that overrides an unknown, and
+one that doesn't.
+
+## Comparisons: NULL never equals anything, including NULL
+
+<SqlRunner query={`SELECT COUNT(*) FROM orders WHERE amount = NULL;`} />
+
+Zero — not because no row has that amount, but because `x = NULL` is
+*always* unknown, for every row, regardless of `x`. `=` and `<>` can never
+be used to test for `NULL`; that's what `IS NULL` / `IS NOT NULL` are for:
+
+<SqlRunner query={`SELECT order_id, status, cancelled_at
+FROM orders
+WHERE cancelled_at IS NOT NULL
+ORDER BY order_id;`} />
+
+## Arithmetic and concatenation propagate it
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders;
+CREATE TABLE scratch_orders AS SELECT * FROM orders;
+UPDATE scratch_orders SET amount = NULL WHERE order_id = 105;
+
+SELECT order_id, amount, amount + 10 AS plus_ten
+FROM scratch_orders
+WHERE order_id IN (104, 105);`} />
+
+Any arithmetic expression touching a `NULL` is `NULL` — not an error, not
+zero. The same is true of `||` concatenation (see
+[string functions](/docs/functions/strings) for how `CONCAT()` differs).
+
+## Aggregates skip NULL — they don't treat it as zero
+
+<SqlRunner query={`SELECT
+  AVG(amount) AS avg_ignoring_null,
+  SUM(amount) * 1.0 / COUNT(*) AS avg_if_it_were_zero
+FROM scratch_orders;`} />
+
+`AVG` divides by the count of *non-null* values, not the row count — a real
+difference from what you'd get by treating a missing amount as `$0`. The
+same asymmetry shows up in `COUNT`:
+
+<SqlRunner query={`SELECT
+  COUNT(*)          AS all_orders,
+  COUNT(cancelled_at) AS cancelled_count
+FROM orders;`} />
+
+`COUNT(*)` counts rows. `COUNT(column)` counts non-null values of that
+column — two different questions that happen to share a function name.
+
+## GROUP BY treats NULL as its own group
+
+<SqlRunner query={`SELECT cancelled_at, COUNT(*) AS n
+FROM orders
+GROUP BY cancelled_at;`} />
+
+Even though `NULL = NULL` is unknown, `GROUP BY` (and `DISTINCT`) bucket all
+the `NULL`s together as a single group. This is a deliberate exception to
+three-valued logic — grouping needs *some* answer to "are these the same,"
+and SQL picks "yes" for two `NULL`s specifically for this purpose.
+
+## ORDER BY: where NULL sorts depends on the engine
+
+<SqlRunner query={`SELECT order_id, cancelled_at
+FROM orders
+ORDER BY cancelled_at
+LIMIT 4;`} />
+
+SQLite (like MySQL and SQL Server) sorts `NULL` as the lowest possible
+value, so ascending order puts it first — as seen above. **Postgres is the
+outlier**: it defaults to `NULLS LAST` on ascending order. Don't rely on the
+default across engines; be explicit with `ORDER BY col NULLS LAST` (Postgres,
+SQLite 3.30+) or the portable trick that works everywhere:
+
+<SqlRunner query={`SELECT order_id, cancelled_at
+FROM orders
+ORDER BY cancelled_at IS NULL, cancelled_at
+LIMIT 4;`} />
+
+`cancelled_at IS NULL` is `0` for real values and `1` for `NULL` — sorting by
+that first pushes every `NULL` to the end, then the second key sorts the
+rest normally.
+
+## Filling in a default: COALESCE
+
+<SqlRunner query={`SELECT order_id, COALESCE(cancelled_at, 'not cancelled') AS status_note
+FROM orders
+ORDER BY order_id
+LIMIT 4;`} />
+
+`COALESCE(a, b, c, ...)` returns the first non-null argument. Full reference:
+[COALESCE](/docs/functions/coalesce).
+
+## The reverse: NULLIF
+
+<SqlRunner query={`SELECT order_id, amount, NULLIF(amount, 0) AS amt_or_null
+FROM orders
+WHERE amount = 0;`} />
+
+`NULLIF(a, b)` returns `NULL` if `a = b`, otherwise `a` — useful for turning
+a sentinel value (a placeholder `0`, an empty string standing in for "no
+data") into a real `NULL` before it feeds into an `AVG` or a division.
+
+## NULL-safe equality
+
+Sometimes you genuinely want "are these the same, treating two `NULL`s as
+equal" — the opposite of standard `=`:
+
+<SqlRunner query={`SELECT
+  NULL IS NOT DISTINCT FROM NULL AS both_null,
+  1    IS NOT DISTINCT FROM NULL AS one_and_null;`} />
+
+`IS NOT DISTINCT FROM` (Postgres, SQLite) never returns unknown — it's a
+real two-valued `TRUE`/`FALSE`. MySQL spells it `<=>`. SQL Server has no
+direct equivalent; the common workaround is
+`(a = b) OR (a IS NULL AND b IS NULL)`.
+
+## The one to actively avoid: NOT IN with a nullable column
+
+This deserves its own page because it's the single most common
+`NULL`-caused bug: `NOT IN (subquery)` silently returns zero rows if the
+subquery's column can contain `NULL` — not an error, just an empty result
+that looks like "no matches" instead of "something's wrong." Full
+walkthrough, live demo, and the fix:
+[EXISTS and IN](/docs/core/exists-in).
+
+## Quick reference
+
+| Operation | NULL behavior |
+| --- | --- |
+| `=`, `<>`, `<`, `>` | always unknown if either side is `NULL` |
+| `IS NULL` / `IS NOT NULL` | the only reliable way to test for `NULL` |
+| `+ - * /`, `\|\|` | any `NULL` operand makes the whole expression `NULL` |
+| `AND` | `FALSE` wins over unknown; `TRUE AND NULL` is unknown |
+| `OR` | `TRUE` wins over unknown; `FALSE OR NULL` is unknown |
+| `COUNT(*)` | counts rows, `NULL` included |
+| `COUNT(col)`, `SUM`, `AVG`, `MIN`, `MAX` | skip `NULL`s entirely |
+| `GROUP BY` / `DISTINCT` | groups all `NULL`s together |
+| `ORDER BY` | sorts lowest (most engines) or last (Postgres default) — be explicit |
+| `NOT IN (subquery)` | returns nothing if the subquery has any `NULL` — use `NOT EXISTS` |
+
+<Related>
+- [NULL handling](/docs/core/nulls) — the reference page this guide expands on.
+- [EXISTS and IN](/docs/core/exists-in) — the NOT IN + NULL trap in full, with the fix.
+- [COALESCE](/docs/functions/coalesce) — full reference.
+- [Why your query returns the wrong number of rows](/blog/wrong-number-of-rows) — a NULL join key is one of the causes.
+</Related>
+
+<TryPlayground>Every query above runs against the same seeded database as the reference pages — try swapping IS NOT DISTINCT FROM for = and see what changes.</TryPlayground>
