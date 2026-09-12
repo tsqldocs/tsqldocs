@@ -9,9 +9,9 @@ import {
 } from 'ai';
 import { z } from 'zod';
 import { source } from '@/lib/source';
-import { Document, type DocumentData } from 'flexsearch';
 import { ChatUIMessage, SearchTool } from '../../../components/ai/search';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { createDocsSearchIndex, weightedDocsSearch, type DocsSearchDocument } from '@/lib/docs-search';
 
 // Deliberately tight, not just a cost backstop: there's no paid tier to
 // upgrade into yet, so this is the whole free allowance. Revisit once a
@@ -20,22 +20,10 @@ import { checkRateLimit } from '@/lib/rate-limit';
 const CHAT_RATE_LIMIT = 3;
 const CHAT_RATE_WINDOW_SECONDS = 60 * 60 * 24;
 
-interface CustomDocument extends DocumentData {
-  url: string;
-  title: string;
-  description: string;
-  content: string;
-}
 const searchServer = createSearchServer();
 
 async function createSearchServer() {
-  const search = new Document<CustomDocument>({
-    document: {
-      id: 'url',
-      index: ['title', 'description', 'content'],
-      store: true,
-    },
-  });
+  const search = createDocsSearchIndex();
 
   const docs = await chunkedAll(
     source.getPages().map(async (page) => {
@@ -46,7 +34,7 @@ async function createSearchServer() {
         description: page.data.description,
         url: page.url,
         content: await page.data.getText('processed'),
-      } as CustomDocument;
+      } as DocsSearchDocument;
     }),
   );
 
@@ -157,6 +145,6 @@ const searchTool = tool({
   }),
   async execute({ query, limit }) {
     const search = await searchServer;
-    return await search.searchAsync(query, { limit, merge: true, enrich: true });
+    return await weightedDocsSearch(search, query, limit);
   },
 }) satisfies SearchTool;
