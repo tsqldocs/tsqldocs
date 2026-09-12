@@ -1,30 +1,12 @@
 import Stripe from 'stripe';
 import { getStripe, stripeConfigured } from '@/lib/stripe';
-import { getTokenForSubscription, setEntitlement, type Entitlement } from '@/lib/subscriber';
+import { setEntitlement } from '@/lib/subscriber';
 
-function mapStatus(status: Stripe.Subscription.Status): Entitlement['status'] {
-  if (status === 'active' || status === 'trialing') return 'active';
-  if (status === 'past_due') return 'past_due';
-  return 'canceled';
-}
-
-async function handleSubscriptionEvent(subscription: Stripe.Subscription) {
-  // Nothing to update if this subscription was never linked to a token —
-  // that link is created on the success-page redirect right after
-  // checkout, so it's normal for the very first `customer.subscription.
-  // created` webhook to race ahead of it and find nothing yet.
-  const token = await getTokenForSubscription(subscription.id);
-  if (!token) return;
-
-  const customerId =
-    typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
-
-  await setEntitlement(token, {
-    status: mapStatus(subscription.status),
-    customerId,
-    subscriptionId: subscription.id,
-  });
-}
+// Prefix match, not an explicit event list — covers every subscription
+// lifecycle event (created/updated/deleted, and any future one Stripe
+// adds) without the dashboard's selected-events list and this switch
+// having to stay in sync.
+const HANDLED_PREFIX = 'customer.subscription.';
 
 export async function POST(req: Request) {
   if (!stripeConfigured() || !process.env.STRIPE_WEBHOOK_SECRET) {
@@ -41,26 +23,36 @@ export async function POST(req: Request) {
 
   let event: Stripe.Event;
   try {
-    // Async variant: signature verification uses Web Crypto here, not
-    // Node's crypto module, which is what Cloudflare Workers actually has.
+    // Explicit SubtleCrypto provider — Cloudflare Workers has Web Crypto,
+    // not Node's crypto module that Stripe's SDK assumes by default.
     event = await stripe.webhooks.constructEventAsync(
       body,
       signature,
       process.env.STRIPE_WEBHOOK_SECRET,
+      undefined,
+      Stripe.createSubtleCryptoProvider(),
     );
   } catch (err) {
     console.error('[stripe webhook] signature verification failed', err);
     return Response.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  switch (event.type) {
-    case 'customer.subscription.created':
-    case 'customer.subscription.updated':
-    case 'customer.subscription.deleted':
-      await handleSubscriptionEvent(event.data.object);
-      break;
-    default:
-      break;
+  if (event.type.startsWith(HANDLED_PREFIX)) {
+    const subscription = event.data.object as Stripe.Subscription;
+    const customerId =
+      typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
+
+    try {
+      await setEntitlement(customerId, {
+        status: subscription.status,
+        subscriptionId: subscription.id,
+      });
+    } catch (err) {
+      console.error('[stripe webhook] failed to write entitlement', err);
+      // Non-2xx is deliberate — tells Stripe to retry with backoff, covering
+      // a transient KV error without us building our own retry logic.
+      return Response.json({ error: 'Failed to record subscription state.' }, { status: 500 });
+    }
   }
 
   return Response.json({ received: true });

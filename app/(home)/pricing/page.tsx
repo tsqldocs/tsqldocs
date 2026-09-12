@@ -1,12 +1,8 @@
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { CheckIcon } from 'lucide-react';
-import {
-  FREE_CHAT_RATE_LIMIT,
-  SUBSCRIBER_CHAT_RATE_LIMIT,
-  SUBSCRIBER_COOKIE,
-  isActiveSubscriber,
-} from '@/lib/subscriber';
+import { FREE_CHAT_RATE_LIMIT, SUBSCRIBER_CHAT_RATE_LIMIT, checkSubscriberCookie } from '@/lib/subscriber';
+import { SUBSCRIBER_COOKIE } from '@/lib/subscriber-cookie';
 import { stripeConfigured } from '@/lib/stripe';
 
 export const metadata: Metadata = {
@@ -33,7 +29,7 @@ export default async function PricingPage({
   const params = await searchParams;
   const cookieStore = await cookies();
   const token = cookieStore.get(SUBSCRIBER_COOKIE)?.value;
-  const subscriber = await isActiveSubscriber(token);
+  const { isSubscriber: subscriber } = await checkSubscriberCookie(token);
   const billingReady = stripeConfigured();
 
   const success = params?.success === '1';

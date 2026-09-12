@@ -95,10 +95,12 @@ export default function PrivacyPage() {
           knows to apply the higher limit.
         </p>
         <p>
-          A successful subscription sets one functional cookie in your browser — a random,
-          meaningless token that looks up that status. It carries no personal information by
-          itself. Canceling (via the &ldquo;Manage subscription&rdquo; link, which opens
-          Stripe&rsquo;s own billing portal) updates that status the same way. See{' '}
+          A successful subscription sets one functional, cryptographically signed cookie in
+          your browser containing Stripe&rsquo;s customer reference (not your email, name, or
+          card details) and can&rsquo;t be edited or forged client-side. Canceling (via the
+          &ldquo;Manage subscription&rdquo; link, which opens Stripe&rsquo;s own billing
+          portal) updates your status, which this cookie is re-checked against periodically.
+          See{' '}
           <a href="https://stripe.com/privacy" target="_blank" rel="noreferrer">
             Stripe&rsquo;s privacy policy
           </a>{' '}

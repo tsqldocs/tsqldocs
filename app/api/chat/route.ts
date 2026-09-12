@@ -12,13 +12,7 @@ import { source } from '@/lib/source';
 import { ChatUIMessage, SearchTool } from '../../../components/ai/search';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { createDocsSearchIndex, weightedDocsSearch, type DocsSearchDocument } from '@/lib/docs-search';
-import {
-  FREE_CHAT_RATE_LIMIT,
-  SUBSCRIBER_CHAT_RATE_LIMIT,
-  SUBSCRIBER_COOKIE,
-  getCookie,
-  isActiveSubscriber,
-} from '@/lib/subscriber';
+import { FREE_CHAT_RATE_LIMIT, SUBSCRIBER_CHAT_RATE_LIMIT, checkSubscriber } from '@/lib/subscriber';
 
 const CHAT_RATE_WINDOW_SECONDS = 60 * 60 * 24;
 
@@ -94,26 +88,29 @@ export async function POST(req: Request, ctx: RouteContext<"/api/chat">) {
     );
   }
 
-  const subscriberToken = getCookie(req, SUBSCRIBER_COOKIE);
-  const subscriber = await isActiveSubscriber(subscriberToken);
-  const limit = subscriber ? SUBSCRIBER_CHAT_RATE_LIMIT : FREE_CHAT_RATE_LIMIT;
-  // Subscribers are keyed by their own token, not IP, so their higher limit
-  // can't be diluted by (or leak to) others sharing their network.
+  const subscriber = await checkSubscriber(req);
+  const limit = subscriber.isSubscriber ? SUBSCRIBER_CHAT_RATE_LIMIT : FREE_CHAT_RATE_LIMIT;
+  // Subscribers are keyed by their own Stripe customer id, not IP, so their
+  // higher limit can't be diluted by (or leak to) others sharing their
+  // network.
   const { allowed } = await checkRateLimit(
     req,
     'chat',
     limit,
     CHAT_RATE_WINDOW_SECONDS,
-    subscriber ? `sub:${subscriberToken}` : undefined,
+    subscriber.isSubscriber ? `sub:${subscriber.customerId}` : undefined,
   );
   if (!allowed) {
     return Response.json(
       {
-        error: subscriber
+        error: subscriber.isSubscriber
           ? "You've hit today's AI question limit — try again tomorrow."
           : "You've hit today's free limit for AI questions — subscribe for more, or try again tomorrow.",
       },
-      { status: 429 },
+      {
+        status: 429,
+        headers: subscriber.setCookieHeader ? { 'Set-Cookie': subscriber.setCookieHeader } : undefined,
+      },
     );
   }
 
@@ -140,6 +137,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/chat">) {
   });
 
   return createUIMessageStreamResponse({
+    headers: subscriber.setCookieHeader ? { 'Set-Cookie': subscriber.setCookieHeader } : undefined,
     stream: toUIMessageStream({
       stream: result.stream,
       // Surface the real reason instead of the SDK's generic "An error occurred."
