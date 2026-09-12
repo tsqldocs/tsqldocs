@@ -81,7 +81,7 @@ export default async function PricingPage({
         <div className="rounded-2xl border border-fd-primary/40 bg-fd-card p-6 ring-1 ring-fd-primary/20">
           <h2 className="text-lg font-semibold text-fd-foreground">Supporter</h2>
           <p className="mt-1 text-3xl font-semibold tracking-[-0.02em] text-fd-foreground">
-            $4.99<span className="text-base font-normal text-fd-muted-foreground">/mo</span>
+            $6<span className="text-base font-normal text-fd-muted-foreground">/mo</span>
           </p>
           <ul className="mt-5 space-y-2.5 text-sm">
             {SUPPORTER_FEATURES.map((f) => (
