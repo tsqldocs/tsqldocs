@@ -11,7 +11,7 @@ export default function TermsPage() {
     <main className="mx-auto w-full max-w-3xl px-6 py-12 md:py-16">
       <article className="prose">
         <h1>Terms of use</h1>
-        <p className="text-sm text-fd-muted-foreground">Last updated: September 5, 2026</p>
+        <p className="text-sm text-fd-muted-foreground">Last updated: September 12, 2026</p>
 
         <p>By using tsqldocs, you agree to the following.</p>
 
@@ -45,6 +45,18 @@ export default function TermsPage() {
             being endorsed by any database vendor.
           </li>
         </ul>
+
+        <h2>Subscriptions</h2>
+        <p>
+          The reference, playground, and every tool on the site are free with no expiration.
+          Subscribing raises the daily limit on the AI assistant only; it does not unlock any
+          content that is otherwise unavailable. Payment is processed by Stripe — tsqldocs
+          never receives your card details. You can cancel anytime from the
+          &ldquo;Manage subscription&rdquo; link on the{' '}
+          <a href="/pricing">pricing page</a>, which opens Stripe&rsquo;s own billing portal;
+          your confirmation email states exactly when the cancellation takes effect. Fees
+          already charged are non-refundable except where required by law.
+        </p>
 
         <h2>Content and intellectual property</h2>
         <p>

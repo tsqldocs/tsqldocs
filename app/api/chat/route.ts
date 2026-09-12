@@ -12,12 +12,14 @@ import { source } from '@/lib/source';
 import { ChatUIMessage, SearchTool } from '../../../components/ai/search';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { createDocsSearchIndex, weightedDocsSearch, type DocsSearchDocument } from '@/lib/docs-search';
+import {
+  FREE_CHAT_RATE_LIMIT,
+  SUBSCRIBER_CHAT_RATE_LIMIT,
+  SUBSCRIBER_COOKIE,
+  getCookie,
+  isActiveSubscriber,
+} from '@/lib/subscriber';
 
-// Deliberately tight, not just a cost backstop: there's no paid tier to
-// upgrade into yet, so this is the whole free allowance. Revisit once a
-// subscription exists (xlsdocs' shape: a low shared free limit + a much
-// higher per-subscriber one, gated on a checkSubscriber() check).
-const CHAT_RATE_LIMIT = 3;
 const CHAT_RATE_WINDOW_SECONDS = 60 * 60 * 24;
 
 const searchServer = createSearchServer();
@@ -92,10 +94,25 @@ export async function POST(req: Request, ctx: RouteContext<"/api/chat">) {
     );
   }
 
-  const { allowed } = await checkRateLimit(req, 'chat', CHAT_RATE_LIMIT, CHAT_RATE_WINDOW_SECONDS);
+  const subscriberToken = getCookie(req, SUBSCRIBER_COOKIE);
+  const subscriber = await isActiveSubscriber(subscriberToken);
+  const limit = subscriber ? SUBSCRIBER_CHAT_RATE_LIMIT : FREE_CHAT_RATE_LIMIT;
+  // Subscribers are keyed by their own token, not IP, so their higher limit
+  // can't be diluted by (or leak to) others sharing their network.
+  const { allowed } = await checkRateLimit(
+    req,
+    'chat',
+    limit,
+    CHAT_RATE_WINDOW_SECONDS,
+    subscriber ? `sub:${subscriberToken}` : undefined,
+  );
   if (!allowed) {
     return Response.json(
-      { error: "You've hit today's free limit for AI questions — try again tomorrow." },
+      {
+        error: subscriber
+          ? "You've hit today's AI question limit — try again tomorrow."
+          : "You've hit today's free limit for AI questions — subscribe for more, or try again tomorrow.",
+      },
       { status: 429 },
     );
   }

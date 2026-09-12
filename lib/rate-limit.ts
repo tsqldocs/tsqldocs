@@ -14,8 +14,13 @@ export async function checkRateLimit(
   routeKey: string,
   limit: number,
   windowSeconds: number = DEFAULT_WINDOW_SECONDS,
+  // Pass a subscriber's own token here instead of relying on IP — otherwise
+  // a paying subscriber's higher limit would apply to everyone sharing their
+  // IP (office wifi, VPN), and their allowance would be capped by others on
+  // it too.
+  identifierOverride?: string,
 ): Promise<{ allowed: boolean; remaining: number }> {
-  const id = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const id = identifierOverride ?? request.headers.get('cf-connecting-ip') ?? 'unknown';
   const key = `ratelimit:${routeKey}:${id}`;
 
   const { env } = await getCloudflareContext({ async: true });

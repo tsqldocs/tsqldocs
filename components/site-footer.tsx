@@ -19,6 +19,7 @@ const columns: { heading: string; links: { label: string; href: string; external
     heading: 'Project',
     links: [
       { label: 'Blog', href: '/blog' },
+      { label: 'Pricing', href: '/pricing' },
       { label: 'About', href: '/about' },
       {
         label: 'GitHub',

@@ -11,12 +11,14 @@ export default function PrivacyPage() {
     <main className="mx-auto w-full max-w-3xl px-6 py-12 md:py-16">
       <article className="prose">
         <h1>Privacy</h1>
-        <p className="text-sm text-fd-muted-foreground">Last updated: September 5, 2026</p>
+        <p className="text-sm text-fd-muted-foreground">Last updated: September 12, 2026</p>
 
         <p>
-          tsqldocs is a documentation site. It has no accounts, no login, and no advertising
-          or cross-site tracking cookies. This page describes the small amount of data that
-          is processed when you use it.
+          tsqldocs is a documentation site. It has no accounts, no passwords, and no
+          advertising or cross-site tracking cookies. Subscribing to raise the AI question
+          limit uses Stripe and sets one functional cookie — see{' '}
+          <a href="#subscriptions">Subscriptions and billing</a> below. This page describes
+          the data that is processed when you use the site.
         </p>
 
         <h2>Analytics</h2>
@@ -62,7 +64,9 @@ export default function PrivacyPage() {
           So the free assistant stays available, requests are counted per visitor using a key
           derived from your IP address. That counter is stored temporarily (it expires within
           24 hours) in Cloudflare Workers KV. Your raw IP address is not retained by tsqldocs
-          beyond standard short-lived server logs.
+          beyond standard short-lived server logs. If you&rsquo;re subscribed, requests are
+          counted against your subscription token instead of your IP, so your higher limit
+          isn&rsquo;t affected by anyone else on your network.
         </p>
 
         <h2>Hosting</h2>
@@ -80,6 +84,27 @@ export default function PrivacyPage() {
           .
         </p>
 
+        <h2 id="subscriptions">Subscriptions and billing</h2>
+        <p>
+          Subscribing to raise the AI question limit is handled entirely by{' '}
+          <strong>Stripe</strong>. Your card details and email go directly to Stripe&rsquo;s
+          checkout page — tsqldocs never sees or stores your card number, and does not store
+          your email at all. What tsqldocs keeps, in the same Cloudflare KV store used for
+          rate limiting, is only: your subscription&rsquo;s status (active, past due, or
+          canceled) and Stripe&rsquo;s internal customer/subscription IDs, so the AI assistant
+          knows to apply the higher limit.
+        </p>
+        <p>
+          A successful subscription sets one functional cookie in your browser — a random,
+          meaningless token that looks up that status. It carries no personal information by
+          itself. Canceling (via the &ldquo;Manage subscription&rdquo; link, which opens
+          Stripe&rsquo;s own billing portal) updates that status the same way. See{' '}
+          <a href="https://stripe.com/privacy" target="_blank" rel="noreferrer">
+            Stripe&rsquo;s privacy policy
+          </a>{' '}
+          for what Stripe itself collects as your payment processor.
+        </p>
+
         <h2>The playground</h2>
         <p>
           The SQL playground and the runnable examples execute entirely in your browser
@@ -92,7 +117,8 @@ export default function PrivacyPage() {
           <li>no accounts, no passwords, no email lists</li>
           <li>no advertising, no ad networks, no retargeting</li>
           <li>no selling or sharing of data with data brokers</li>
-          <li>no cross-site tracking cookies</li>
+          <li>no cross-site tracking cookies (the one subscription cookie is functional only)</li>
+          <li>never sees or stores your card number or your email</li>
         </ul>
 
         <h2>Children</h2>
