@@ -35,10 +35,15 @@ export async function GET(req: Request) {
   });
   await linkSubscriptionToToken(subscription.id, token);
 
-  const response = Response.redirect(`${siteUrl}/pricing?success=1`, 303);
-  response.headers.append(
-    'Set-Cookie',
-    `${SUBSCRIBER_COOKIE}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Lax`,
-  );
-  return response;
+  // Response.redirect() returns a Response with immutable headers — trying
+  // to .append() a Set-Cookie onto it throws ("Can't modify immutable
+  // headers") rather than failing to compile, so it only surfaces at
+  // runtime. Building the redirect manually gives a mutable headers object.
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: `${siteUrl}/pricing?success=1`,
+      'Set-Cookie': `${SUBSCRIBER_COOKIE}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Lax`,
+    },
+  });
 }
