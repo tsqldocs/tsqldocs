@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import {
+  ArrowLeftRightIcon,
   ArrowRightIcon,
   BookOpenIcon,
   GaugeIcon,
@@ -65,6 +66,12 @@ const sections = [
     title: 'Performance',
     text: 'What an index actually does, the patterns that silently defeat one, and how to read a query plan on any engine.',
     href: '/docs/performance',
+  },
+  {
+    icon: ArrowLeftRightIcon,
+    title: 'Dialect comparison',
+    text: 'The same ~16 operations side by side across PostgreSQL, MySQL, SQL Server, and SQLite.',
+    href: '/dialects',
   },
 ];
 
