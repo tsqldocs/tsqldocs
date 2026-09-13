@@ -4,6 +4,7 @@ import {
   ArrowRightIcon,
   BookOpenIcon,
   GaugeIcon,
+  ListIcon,
   MapIcon,
   PencilRulerIcon,
   PlayIcon,
@@ -73,6 +74,12 @@ const sections = [
     text: 'The same ~16 operations side by side across PostgreSQL, MySQL, SQL Server, and SQLite.',
     href: '/dialects',
   },
+  {
+    icon: ListIcon,
+    title: 'Cheat sheet',
+    text: 'Every clause, join, and function on one page — syntax and a one-line reminder, nothing else.',
+    href: '/cheatsheet',
+  },
 ];
 
 const differentiators = [
@@ -105,55 +112,57 @@ export default function HomePage() {
           <HeroFlow />
         </div>
 
-        <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-6 px-6 pb-10 pt-20 text-center md:pt-28">
-          <span className="inline-flex items-center gap-2 rounded-full border border-fd-primary/25 bg-fd-primary/10 px-3 py-1.5 text-xs font-medium text-fd-primary">
-            <SparklesIcon className="size-3.5" />
-            Runnable SQL reference, with an AI that knows it
-          </span>
-
-          <h1 className="max-w-3xl text-5xl font-semibold tracking-[-0.04em] text-fd-foreground md:text-6xl lg:text-7xl">
-            Every SQL pattern,{' '}
-            <span className="bg-gradient-to-r from-fd-primary to-sky-400 bg-clip-text text-transparent">
-              runnable in your browser
+        <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-6 py-16 md:py-24 lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:py-28">
+          <div className="flex flex-col items-center gap-6 text-center lg:items-start lg:text-left">
+            <span className="inline-flex items-center gap-2 rounded-full border border-fd-primary/25 bg-fd-primary/10 px-3 py-1.5 text-xs font-medium text-fd-primary">
+              <SparklesIcon className="size-3.5" />
+              Runnable SQL reference, with an AI that knows it
             </span>
-          </h1>
 
-          <p className="max-w-2xl text-lg text-fd-muted-foreground">
-            A practical reference for the clauses, joins, window functions, and edge cases that
-            break production queries — each one with a live example you can edit and run, and an AI
-            assistant grounded in every page.
-          </p>
+            <h1 className="text-4xl font-semibold tracking-[-0.04em] text-fd-foreground md:text-5xl lg:text-6xl">
+              Every SQL pattern,{' '}
+              <span className="bg-gradient-to-r from-fd-primary to-sky-400 bg-clip-text text-transparent">
+                runnable in your browser
+              </span>
+            </h1>
 
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href="/docs"
-              className="inline-flex items-center gap-2 rounded-full bg-fd-primary px-5 py-3 text-sm font-medium text-fd-primary-foreground transition hover:opacity-90"
-            >
-              Open the docs
-              <ArrowRightIcon className="size-4" />
-            </Link>
-            <Link
-              href="/docs/playground"
-              className="inline-flex items-center gap-2 rounded-full border border-fd-border bg-fd-card px-5 py-3 text-sm font-medium text-fd-foreground transition hover:border-fd-primary/40"
-            >
-              Try the playground
-            </Link>
-            <Link
-              href="/blog"
-              className="inline-flex items-center gap-1.5 px-2 py-3 text-sm font-medium text-fd-muted-foreground transition hover:text-fd-foreground"
-            >
-              Read the blog
-              <ArrowRightIcon className="size-3.5" />
-            </Link>
+            <p className="max-w-xl text-lg text-fd-muted-foreground">
+              A practical reference for the clauses, joins, window functions, and edge cases that
+              break production queries — each one with a live example you can edit and run, and an
+              AI assistant grounded in every page.
+            </p>
+
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+              <Link
+                href="/docs"
+                className="inline-flex items-center gap-2 rounded-full bg-fd-primary px-5 py-3 text-sm font-medium text-fd-primary-foreground transition hover:opacity-90"
+              >
+                Open the docs
+                <ArrowRightIcon className="size-4" />
+              </Link>
+              <Link
+                href="/docs/playground"
+                className="inline-flex items-center gap-2 rounded-full border border-fd-border bg-fd-card px-5 py-3 text-sm font-medium text-fd-foreground transition hover:border-fd-primary/40"
+              >
+                Try the playground
+              </Link>
+              <Link
+                href="/blog"
+                className="inline-flex items-center gap-1.5 px-2 py-3 text-sm font-medium text-fd-muted-foreground transition hover:text-fd-foreground"
+              >
+                Read the blog
+                <ArrowRightIcon className="size-3.5" />
+              </Link>
+            </div>
           </div>
-        </div>
 
-        {/* Live demo */}
-        <div className="mx-auto w-full max-w-3xl px-6 pb-16">
-          <p className="mb-2 text-center text-xs font-medium uppercase tracking-[0.12em] text-fd-muted-foreground">
-            This runs real SQLite — edit it
-          </p>
-          <SqlRunner query={HERO_QUERY} deferInit />
+          {/* Live demo */}
+          <div className="w-full">
+            <p className="mb-2 text-center text-xs font-medium uppercase tracking-[0.12em] text-fd-muted-foreground lg:text-left">
+              This runs real SQLite — edit it
+            </p>
+            <SqlRunner query={HERO_QUERY} deferInit />
+          </div>
         </div>
       </section>
 
