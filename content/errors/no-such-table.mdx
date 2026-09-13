@@ -1,0 +1,65 @@
+---
+title: '"no such table" / relation does not exist'
+description: The table name in your query doesn't match what the database actually has — usually a typo, the wrong schema, or a case-sensitivity trap. Here's how to find out which.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["troubleshooting"]
+---
+
+- **SQLite:** `no such table: custmers`
+- **PostgreSQL:** `ERROR: relation "custmers" does not exist`
+- **MySQL:** `Table 'mydb.custmers' doesn't exist`
+- **SQL Server:** `Invalid object name 'custmers'.`
+
+<SqlRunner query={`SELECT * FROM custmers;`} />
+
+## The cause, roughly in order of likelihood
+
+1. **Typo in the table name.** By far the most common cause — check the
+   exact spelling and pluralization (`customer` vs `customers`) against
+   your actual schema.
+2. **Wrong schema or database.** `orders` might really exist, just as
+   `sales.orders` or `public.orders` — not bare `orders` in whatever schema
+   your connection defaults to. Postgres and SQL Server both search a
+   default schema path unless you qualify the name.
+3. **Case sensitivity.** Postgres folds unquoted identifiers to lowercase,
+   so a table created as `"Customers"` (quoted, mixed case) can only be
+   referenced as `"Customers"` afterward — bare `customers` genuinely won't
+   find it. MySQL's sensitivity depends on the OS and a server setting.
+   SQL Server and SQLite are case-insensitive by default for identifiers.
+4. **It's a view, and the view's own query is broken**, so the view itself
+   failed to resolve — the error points at the outer table name but the
+   real problem is one level down.
+5. **You're connected to the wrong database entirely** (right table name,
+   wrong environment) — worth a sanity check before anything else if the
+   table *should* obviously exist.
+
+## How to check what's actually there
+
+Rather than guessing, list what the database thinks exists:
+
+```sql
+-- PostgreSQL
+SELECT table_schema, table_name FROM information_schema.tables
+WHERE table_name ILIKE '%custom%';
+
+-- MySQL
+SHOW TABLES LIKE '%custom%';
+
+-- SQL Server
+SELECT schema_name(schema_id), name FROM sys.tables WHERE name LIKE '%custom%';
+
+-- SQLite
+SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%custom%';
+```
+
+The correctly-spelled, correctly-schema'd query runs fine:
+
+<SqlRunner query={`SELECT * FROM customers LIMIT 5;`} />
+
+<Related>
+- [Playground](/docs/playground) — see the exact five tables and their columns this site's examples run against.
+- [SQL dialect comparison](/dialects) — where else engines diverge on naming and quoting rules.
+</Related>
+
+<TryPlayground>Misspell a real table name above and compare the wording to what your own database engine gives you.</TryPlayground>

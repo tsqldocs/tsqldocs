@@ -1,0 +1,85 @@
+---
+title: "Duplicate key / unique constraint violation"
+description: You inserted or updated a row into a value that already exists in a primary key or unique column. The fix depends on whether the duplicate is a bug or an expected case you need to handle.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["dml", "constraints"]
+---
+
+- **SQLite:** `UNIQUE constraint failed: customers.customer_id`
+- **PostgreSQL:** `ERROR: duplicate key value violates unique constraint "customers_pkey" DETAIL: Key (customer_id)=(1) already exists.`
+- **MySQL:** `#1062 - Duplicate entry '1' for key 'customers.PRIMARY'`
+- **SQL Server:** `Violation of PRIMARY KEY constraint 'PK_customers'. Cannot insert duplicate key in object 'dbo.customers'. The duplicate key value is (1).`
+
+Customer `1` already exists — inserting it again fails, on every engine
+including the one running this example live:
+
+<SqlRunner query={`INSERT INTO customers (customer_id, name, country) VALUES (1, 'Dup Corp', 'US');`} />
+
+## The cause
+
+A `PRIMARY KEY` or `UNIQUE` constraint exists specifically to make this
+error possible — it's the database refusing to store two rows with the
+same value in a column (or column set) you told it must be unique. The
+error is doing its job. The question is *why* your application produced a
+duplicate in the first place.
+
+## Figure out which situation you're in
+
+**It's a genuine bug** — you generated the wrong ID, or ran the same insert
+twice (a retried request, a re-run migration). Fix the thing generating
+the duplicate; the constraint just caught it before it corrupted data.
+
+**The duplicate is expected and you need "insert, or update if it's
+already there."** That's not a bug to fix — it's the wrong statement for
+the job. Use an upsert (a scratch table here, so the shared `customers`
+data above stays untouched for the rest of this page):
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
+CREATE TABLE scratch_customers (customer_id INTEGER PRIMARY KEY, name TEXT);
+INSERT INTO scratch_customers VALUES (1, 'Acme Corp');
+
+-- customer_id 1 already exists — this updates instead of erroring
+INSERT INTO scratch_customers (customer_id, name)
+VALUES (1, 'Acme Corp (Updated)')
+ON CONFLICT (customer_id) DO UPDATE SET name = excluded.name;
+
+SELECT * FROM scratch_customers;`} />
+
+See [UPSERT](/docs/dml/upsert) for the MySQL (`ON DUPLICATE KEY UPDATE`)
+and SQL Server (`MERGE`) equivalents — the syntax differs more here than
+almost anywhere else in SQL.
+
+**You want to silently skip duplicates** instead of updating them —
+`DO NOTHING` in place of `DO UPDATE SET ...` leaves the existing row
+exactly as it was, with no error:
+
+```sql
+INSERT INTO scratch_customers (customer_id, name)
+VALUES (1, 'Ignored')
+ON CONFLICT (customer_id) DO NOTHING;
+```
+
+## Before you write the upsert, check the constraint is the right one
+
+A duplicate key error on a column you *didn't* expect to be constrained
+usually means the unique constraint is broader than you think — e.g. a
+composite unique constraint across `(customer_id, order_date)` will reject
+a second order on the same day even though `order_id` itself is fine. Check
+what's actually declared unique before assuming the fix is "just handle
+the duplicate":
+
+```sql
+-- PostgreSQL / MySQL
+SELECT constraint_name, column_name
+FROM information_schema.key_column_usage
+WHERE table_name = 'customers';
+```
+
+<Related>
+- [UPSERT](/docs/dml/upsert) — insert-or-update syntax across PostgreSQL, MySQL, SQL Server, and SQLite.
+- [INSERT](/docs/dml/insert) — multi-row inserts and the basics this builds on.
+- [Deduplicate rows](/docs/recipes/deduplicate) — cleaning up duplicates that already made it into a table without a constraint stopping them.
+</Related>
+
+<TryPlayground>Try the plain duplicate insert above, then the `ON CONFLICT` version, and compare what each does to the row count.</TryPlayground>

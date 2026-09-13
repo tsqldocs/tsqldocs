@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { StethoscopeIcon } from 'lucide-react';
 import { QueryDoctor } from '@/components/query-doctor';
+import { errorSlug, getErrorPages } from '@/lib/error-source';
 
 export const metadata: Metadata = {
   title: 'Query Doctor',
@@ -20,6 +21,8 @@ const COMMON = [
 ];
 
 export default function QueryDoctorPage() {
+  const errorPages = getErrorPages();
+
   return (
     <main className="flex flex-1 flex-col">
       <section className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-16 md:py-20">
@@ -82,6 +85,34 @@ export default function QueryDoctorPage() {
             ))}
           </div>
         </div>
+
+        {errorPages.length > 0 && (
+          <div>
+            <h2 className="text-lg font-semibold tracking-[-0.02em] text-fd-foreground">
+              Specific error messages
+            </h2>
+            <p className="mt-1 text-sm text-fd-muted-foreground">
+              Searched the exact wording? These break down one error each, across engines.
+            </p>
+            <div className="mt-3 flex flex-col gap-2">
+              {errorPages.map((entry) => {
+                const slug = errorSlug(entry.info.path);
+                return (
+                  <Link
+                    key={slug}
+                    href={`/fix/${slug}`}
+                    className="group rounded-xl border border-fd-border bg-fd-card p-4 transition hover:border-fd-primary/40"
+                  >
+                    <p className="font-medium text-fd-foreground group-hover:text-fd-primary">
+                      {entry.title}
+                    </p>
+                    <p className="mt-1 text-sm text-fd-muted-foreground">{entry.description}</p>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
     </main>
   );

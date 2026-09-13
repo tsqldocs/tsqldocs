@@ -9,6 +9,7 @@ import {
 } from 'ai';
 import { z } from 'zod';
 import { source } from '@/lib/source';
+import { errors as errorEntries, errorSlug } from '@/lib/error-source';
 import { ChatUIMessage, SearchTool } from '../../../components/ai/search';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { createDocsSearchIndex, weightedDocsSearch, type DocsSearchDocument } from '@/lib/docs-search';
@@ -34,7 +35,16 @@ async function createSearchServer() {
     }),
   );
 
-  for (const doc of docs) {
+  const errorDocs = await chunkedAll(
+    errorEntries.entries.map(async (entry) => ({
+      title: entry.title,
+      description: entry.description,
+      url: `/fix/${errorSlug(entry.info.path)}`,
+      content: await entry.getText('processed'),
+    } as DocsSearchDocument)),
+  );
+
+  for (const doc of [...docs, ...errorDocs]) {
     if (doc) search.add(doc);
   }
 

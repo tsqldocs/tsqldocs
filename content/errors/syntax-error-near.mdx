@@ -1,0 +1,100 @@
+---
+title: '"syntax error at or near" / "Incorrect syntax near"'
+description: A generic parser error that can mean a dozen different things. Here's how to read the pointer and the handful of causes that account for almost every case.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["troubleshooting"]
+---
+
+- **PostgreSQL:** `ERROR: syntax error at or near "FROM"`
+- **SQL Server:** `Incorrect syntax near 'FROM'.`
+- **MySQL:** `You have an error in your SQL syntax; ... check the manual ... for the right syntax to use near 'FROM orders' at line 1`
+- **SQLite:** `near "FROM": syntax error`
+
+Unlike the other errors on this site, this one doesn't point at a specific
+*rule* you broke — it means the parser gave up trying to make sense of your
+query at a specific token. The word it names is where it noticed something
+was wrong, which is often a token or two *after* the actual mistake.
+
+## Read the pointer literally, then look one token left
+
+The named word is rarely the typo itself — it's where the parser's
+expectations broke down. Whatever comes immediately before it is the
+usual place to look.
+
+## The five causes that account for almost all of it
+
+**1. A trailing comma before the next clause.** The single most common
+cause:
+
+<SqlRunner query={`SELECT order_id, amount, FROM orders;`} />
+
+The comma after `amount` tells the parser to expect another column — and
+`FROM` isn't one. Same failure shows up trailing the last column in an
+`INSERT` list, or the last item in a `GROUP BY`/`ORDER BY`.
+
+**2. Clauses in the wrong order.** SQL's clause order is fixed —
+`SELECT` → `FROM` → `WHERE` → `GROUP BY` → `HAVING` → `ORDER BY` →
+`LIMIT` — and nothing about the syntax lets you reorder it, even when the
+logic would still make sense to a person:
+
+<SqlRunner query={`SELECT customer_id, COUNT(*) FROM orders GROUP BY customer_id WHERE status = 'paid';`} />
+
+`WHERE` has to come before `GROUP BY`. (And it has to, semantically too —
+`WHERE` filters rows *before* grouping; if you meant to filter on something
+about the group, that's what `HAVING` is for. See
+[HAVING](/docs/core/having).)
+
+**3. A reserved keyword used as a bare identifier.** `group`, `order`,
+`select`, `table`, `user`, `check` — reasonable column or alias names that
+happen to also be SQL keywords:
+
+<SqlRunner query={`SELECT order_id AS group FROM orders;`} />
+
+Quote it (`` `group` `` in MySQL/SQLite, `"group"` in Postgres, `[group]`
+in SQL Server) or, better, just pick a name that isn't a keyword —
+`group_name` instead of `group`.
+
+**4. An unclosed or mismatched quote or parenthesis** further up the
+query than the error points at — the parser doesn't know it's inside an
+unterminated string until it hits something that can't follow one, which
+might be several tokens later.
+
+**5. It's not actually a syntax error — the query is valid, just not what
+you meant.** Two variants of this are sharp enough to be worth knowing
+about on their own:
+
+## When it's valid syntax, not a mistake — and that's worse
+
+Forget a comma between two columns, and some engines don't error at all —
+they read it as an alias instead:
+
+<SqlRunner query={`SELECT order_id amount FROM orders;`} />
+
+`SELECT expr alias` (without the word `AS`) is legal SQL — so
+`order_id amount` was parsed as "select `order_id`, call it `amount`,"
+silently discarding the real `amount` column. The result runs, looks
+plausible, and is wrong in a way no syntax error will ever catch — always
+write `AS` explicitly.
+
+Double-quoted strings are also a trap, in the opposite direction of what
+you'd expect from SQLite specifically. Standard SQL (and Postgres, strictly)
+treats `"paid"` as a **quoted identifier**, not a string — `'paid'` is the
+only valid string literal form:
+
+<SqlRunner query={`SELECT * FROM orders WHERE status = "paid";`} />
+
+That ran and returned real rows — SQLite quietly falls back to treating
+`"paid"` as a string literal when no column named `paid` exists, so the
+mistake is invisible here. Postgres won't be so forgiving: it will
+either throw `column "paid" does not exist` or the syntax error you came
+here for, depending on context. If you're writing SQL that has to run
+correctly outside SQLite, use `'single quotes'` for strings and reserve
+double quotes for identifiers, always.
+
+<Related>
+- [GROUP BY](/docs/core/group-by) and [HAVING](/docs/core/having) — the clause-order rule this error catches most often.
+- [SQL dialect comparison](/dialects) — quoting rules side by side across engines.
+</Related>
+
+<TryPlayground>Break each of the five examples above a different way and see which produce an error versus a silently wrong result.</TryPlayground>

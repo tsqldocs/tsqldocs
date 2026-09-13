@@ -1,0 +1,80 @@
+---
+title: "Subquery returns more than one row"
+description: You used a subquery somewhere that expects exactly one value, and it returned several. Most engines stop you — SQLite, notably, won't.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server"]
+tags: ["subqueries"]
+---
+
+- **PostgreSQL:** `ERROR: more than one row returned by a subquery used as an expression`
+- **MySQL:** `Subquery returns more than 1 row`
+- **SQL Server:** `Msg 512, Level 16: Subquery returned more than 1 value. This is not permitted when the subquery follows =, !=, <, <=, >, >= or when the subquery is used as an expression.`
+
+## The cause
+
+A subquery used where a single value is expected — after `=`, in a `SELECT`
+list, as a scalar in an expression — has to actually return one row and one
+column. If the condition that connects it to the outer query isn't
+selective enough, it can return several rows for a given outer row, and the
+engine has no rule for which one to use:
+
+```sql
+-- one row per customer expected — but a customer can have several orders
+SELECT name,
+       (SELECT amount FROM orders WHERE customer_id = c.customer_id) AS an_amount
+FROM customers c;
+```
+
+Any customer with more than one order breaks this in Postgres, MySQL, or
+SQL Server.
+
+## The fix — say what you actually mean
+
+**Want an aggregate across all their orders?** Wrap it:
+
+<SqlRunner query={`SELECT c.name,
+       (SELECT SUM(amount) FROM orders o WHERE o.customer_id = c.customer_id) AS total_spend
+FROM customers c;`} />
+
+**Want one specific row** (most recent order, highest amount, ...)? Add the
+ordering and limit that picks it deterministically:
+
+<SqlRunner query={`SELECT c.name,
+       (SELECT o.amount FROM orders o
+        WHERE o.customer_id = c.customer_id
+        ORDER BY o.order_date DESC LIMIT 1) AS most_recent_order
+FROM customers c;`} />
+
+**Want every matching row, not one collapsed value?** That's not a scalar
+subquery's job — join instead:
+
+<SqlRunner query={`SELECT c.name, o.order_date, o.amount
+FROM customers c
+JOIN orders o ON o.customer_id = c.customer_id
+ORDER BY c.name, o.order_date;`} />
+
+## The SQLite trap: it won't even tell you
+
+This is one of the sharpest differences between SQLite and the server
+engines. The exact query that throws in Postgres, MySQL, and SQL Server
+runs *silently* in SQLite — it just picks one row from the match set and
+gives you no indication it did:
+
+<SqlRunner query={`SELECT c.name,
+       (SELECT o.amount FROM orders o WHERE o.customer_id = c.customer_id) AS an_amount
+FROM customers c;`} />
+
+That returned an answer for every customer, including the ones with
+multiple orders — each got *some* order's amount, not an error. Which
+order it picked isn't defined by the query; it depends on scan order, which
+can change with an index or a SQLite version upgrade. If a scalar subquery
+like this "just works" in SQLite, test it against Postgres or MySQL before
+you trust the result — they'll tell you what SQLite is hiding.
+
+<Related>
+- [Subqueries](/docs/core/subqueries) — scalar, correlated, and `IN`/`EXISTS` forms, and when each is appropriate.
+- [EXISTS vs IN](/docs/core/exists-in) — the other common subquery shape, and its own NULL trap.
+- [Top N per group](/docs/recipes/top-n-per-group) — the window-function alternative when "one row per group" needs more than a single column.
+</Related>
+
+<TryPlayground>Add a second order for a customer who currently has only one, then rerun the unwrapped scalar subquery above and watch it still succeed in SQLite.</TryPlayground>

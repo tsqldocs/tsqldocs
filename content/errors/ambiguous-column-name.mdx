@@ -1,0 +1,59 @@
+---
+title: "Ambiguous column name"
+description: Two joined tables both have a column with this name, and you referenced it without saying which table. Every engine refuses to guess — here's how to fix it and avoid it next time.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["joins"]
+---
+
+Same problem, different wording per engine:
+
+- **SQLite:** `ambiguous column name: customer_id`
+- **PostgreSQL:** `ERROR: column reference "customer_id" is ambiguous`
+- **MySQL:** `Column 'customer_id' in field list is ambiguous`
+- **SQL Server:** `Ambiguous column name 'customer_id'.`
+
+Try it — `customers` and `orders` both have a `customer_id` column, and this
+query doesn't say which one it means:
+
+<SqlRunner query={`SELECT customer_id, name
+FROM customers c
+JOIN orders o ON o.customer_id = c.customer_id;`} />
+
+That's a real error from the same SQLite engine that runs everywhere else
+on this site — not a simplified example.
+
+## The cause
+
+Once two tables in a `FROM`/`JOIN` share a column name, every unqualified
+reference to that name is ambiguous — even if, semantically, you know they
+hold "the same" value because that's the join key. The engine doesn't know
+that; it just sees two candidate columns and won't pick one for you.
+
+## The fix
+
+Qualify the column with its table (or alias):
+
+<SqlRunner query={`SELECT c.customer_id, c.name
+FROM customers c
+JOIN orders o ON o.customer_id = c.customer_id;`} />
+
+## Avoiding it up front
+
+- **Always alias your tables** (`c`, `o`) and **always qualify columns that
+  appear in more than one table** — `customer_id`, `id`, `created_at`,
+  `status`, and `name` are the usual repeat offenders.
+- If a query works today and breaks after a schema change (someone added a
+  same-named column to a joined table), this is almost always why — it's
+  not your query that changed, it's the schema underneath it.
+- Some engines only flag the columns actually referenced, not every
+  overlapping name in the query — so a query can run fine for months and
+  only break the day someone finally selects the wrong one.
+
+<Related>
+- [INNER JOIN](/docs/joins/inner-join) — join basics and how matching rows combine.
+- [LEFT JOIN](/docs/joins/left-join) — the other common join, with its own gotchas.
+- [GROUP BY](/docs/core/group-by) — the same "which table did you mean" problem shows up here too, once you group across joined tables.
+</Related>
+
+<TryPlayground>Add a third table to the join above and see how much faster unqualified columns become ambiguous.</TryPlayground>

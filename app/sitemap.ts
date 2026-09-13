@@ -1,14 +1,15 @@
 import type { MetadataRoute } from 'next';
 import { source } from '@/lib/source';
 import { blogSlug, getBlogPosts } from '@/lib/blog-source';
+import { errorSlug, getErrorPages } from '@/lib/error-source';
 import { siteUrl } from '@/lib/shared';
 
 export const dynamic = 'force-static';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  // /fix and /blog are the only real pages outside content/docs — everything
-  // else, including /docs and /docs/recipes themselves, comes from
-  // source.getPages() below so each URL appears exactly once.
+  // /fix and /blog are the only static pages outside content/docs — their
+  // per-entry routes (content/errors, content/blog) are appended below so
+  // each URL appears exactly once.
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: siteUrl, changeFrequency: 'weekly', priority: 1 },
     { url: `${siteUrl}/fix`, changeFrequency: 'monthly', priority: 0.8 },
@@ -39,5 +40,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.6,
   }));
 
-  return [...staticRoutes, ...docsRoutes, ...blogRoutes];
+  const errorRoutes: MetadataRoute.Sitemap = getErrorPages().map((entry) => ({
+    url: `${siteUrl}/fix/${errorSlug(entry.info.path)}`,
+    changeFrequency: 'monthly',
+    priority: 0.7,
+  }));
+
+  return [...staticRoutes, ...docsRoutes, ...blogRoutes, ...errorRoutes];
 }
