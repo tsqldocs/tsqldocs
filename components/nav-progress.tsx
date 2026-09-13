@@ -12,18 +12,27 @@ import { usePathname, useSearchParams } from 'next/navigation';
 //    that the new route has actually rendered.
 // Between those it "trickles" toward 90% so it never looks stuck, then
 // snaps to 100% and fades out once the real navigation lands.
+// Almost every route on this site is static and prefetched, so most
+// navigations finish in well under 100ms — without a floor, the bar would
+// flash for a frame and vanish before anyone could register it.
+const MIN_VISIBLE_MS = 350;
+
 export function NavProgress() {
   const [value, setValue] = useState(0);
   const [visible, setVisible] = useState(false);
   const trickleRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDoneRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startedAtRef = useRef(0);
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const start = useRef(() => {
     if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
     if (trickleRef.current) clearInterval(trickleRef.current);
+    if (pendingDoneRef.current) clearTimeout(pendingDoneRef.current);
 
+    startedAtRef.current = Date.now();
     setVisible(true);
     setValue(0.08);
 
@@ -32,7 +41,7 @@ export function NavProgress() {
     }, 200);
   });
 
-  const done = useRef(() => {
+  const finish = useRef(() => {
     if (trickleRef.current) {
       clearInterval(trickleRef.current);
       trickleRef.current = null;
@@ -46,6 +55,17 @@ export function NavProgress() {
       }, 200);
       return wasVisible;
     });
+  });
+
+  const done = useRef(() => {
+    if (pendingDoneRef.current) clearTimeout(pendingDoneRef.current);
+
+    const remaining = MIN_VISIBLE_MS - (Date.now() - startedAtRef.current);
+    if (remaining > 0) {
+      pendingDoneRef.current = setTimeout(finish.current, remaining);
+    } else {
+      finish.current();
+    }
   });
 
   // Navigation completed: the App Router only updates these once the new
@@ -97,6 +117,7 @@ export function NavProgress() {
       unpatchReplace();
       if (trickleRef.current) clearInterval(trickleRef.current);
       if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+      if (pendingDoneRef.current) clearTimeout(pendingDoneRef.current);
     };
   }, []);
 
