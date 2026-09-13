@@ -1,0 +1,82 @@
+---
+title: "CHECK constraint failed"
+description: A row you tried to write violates a CHECK constraint's rule — the constraint is doing exactly what it was declared to do. The fix is deciding whether the data or the rule is wrong.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["constraints", "dml"]
+---
+
+- **SQLite:** `CHECK constraint failed: amount >= 0`
+- **PostgreSQL:** `ERROR: new row for relation "orders" violates check constraint "orders_amount_check" DETAIL: Failing row contains (1, -50, ...).`
+- **MySQL** (8.0.16+; earlier versions silently ignore `CHECK`): `Check constraint 'orders_chk_1' is violated.`
+- **SQL Server:** `The INSERT statement conflicted with the CHECK constraint "CK_orders_amount". The conflict occurred in database "...", table "dbo.orders", column 'amount'.`
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders;
+CREATE TABLE scratch_orders (
+  order_id INTEGER PRIMARY KEY,
+  amount   REAL CHECK (amount >= 0)
+);
+INSERT INTO scratch_orders VALUES (1, -50.0);`} />
+
+## The cause
+
+A `CHECK` constraint is a boolean expression attached to a column or table
+that every row has to satisfy. Unlike `NOT NULL`, `UNIQUE`, and foreign
+keys — which all enforce a specific, narrow shape — `CHECK` can express
+almost any rule: a range, a set of allowed values, a relationship between
+two columns in the same row. It's doing its job here; `-50` genuinely
+fails `amount >= 0`.
+
+## Two legitimate responses, and they're opposites
+
+**The data is wrong** — this is the common case, and the fix is upstream:
+find why your application produced a negative amount and fix that, the
+same way you would for a `NOT NULL` or foreign key violation.
+
+**The constraint is wrong, or was true when written and isn't anymore** —
+requirements change. If negative amounts are now a legitimate case (a
+refund represented as a negative order, say), the constraint needs
+updating, not the data forced around it:
+
+```sql
+-- PostgreSQL / SQLite: drop and re-add
+ALTER TABLE orders DROP CONSTRAINT orders_amount_check;
+ALTER TABLE orders ADD CONSTRAINT orders_amount_check CHECK (amount >= -10000);
+
+-- MySQL / SQL Server: broadly the same shape, constraint names required
+ALTER TABLE orders DROP CONSTRAINT orders_amount_check;
+ALTER TABLE orders ADD CONSTRAINT orders_amount_check CHECK (amount >= -10000);
+```
+
+A row that respects the (corrected) rule succeeds normally:
+
+<SqlRunner query={`INSERT INTO scratch_orders VALUES (2, 50.0);
+SELECT * FROM scratch_orders;`} />
+
+## Multi-column CHECK constraints fail the same way, with a less obvious cause
+
+A `CHECK` isn't limited to one column — it can compare several, which
+means the failing value in the error message might not be the column that
+actually violates the rule:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders2;
+CREATE TABLE scratch_orders2 (
+  order_id     INTEGER PRIMARY KEY,
+  status       TEXT,
+  cancelled_at TEXT,
+  CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL))
+);
+-- status says cancelled, but there's no cancelled_at to back it up
+INSERT INTO scratch_orders2 VALUES (1, 'cancelled', NULL);`} />
+
+When a `CHECK` failure doesn't make sense looking only at the column
+named in the error, read the full constraint definition — the rule may
+span more than one column.
+
+<Related>
+- [Foreign key constraint fails](/fix/foreign-key-constraint-fails) — the other constraint family, enforcing a relationship instead of a rule.
+- [Duplicate key / unique constraint violation](/fix/duplicate-key-unique-violation) — enforcing uniqueness instead of a boolean rule.
+- [INSERT](/docs/dml/insert) — where these constraints get checked.
+</Related>
+
+<TryPlayground>Change the CHECK expression above to something stricter or looser and see which rows start failing.</TryPlayground>

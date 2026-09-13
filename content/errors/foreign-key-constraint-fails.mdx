@@ -1,0 +1,96 @@
+---
+title: "Foreign key constraint fails"
+description: You tried to insert or update a row that points at a parent row which doesn't exist, or delete a parent row something still references. Plus the one thing every SQLite user eventually gets caught by — it isn't enforced unless you turn it on.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["constraints", "dml"]
+---
+
+- **MySQL:** `Cannot add or update a child row: a foreign key constraint fails (...)`
+- **PostgreSQL:** `ERROR: insert or update on table "orders" violates foreign key constraint "orders_customer_id_fkey" DETAIL: Key (customer_id)=(99) is not present in table "customers".`
+- **SQL Server:** `The INSERT statement conflicted with the FOREIGN KEY constraint "FK_orders_customers". The conflict occurred in database "...", table "dbo.customers", column 'customer_id'.`
+- **SQLite:** `FOREIGN KEY constraint failed`
+
+A scratch schema with the constraint actually declared, since the shared
+seed tables on this site don't have one:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders;
+DROP TABLE IF EXISTS scratch_customers;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE scratch_customers (customer_id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE scratch_orders (
+  order_id    INTEGER PRIMARY KEY,
+  customer_id INTEGER,
+  amount      REAL,
+  FOREIGN KEY (customer_id) REFERENCES scratch_customers(customer_id)
+);
+INSERT INTO scratch_customers VALUES (1, 'Acme Corp');
+INSERT INTO scratch_orders VALUES (1, 1, 50.0);   -- fine, customer 1 exists
+
+-- customer_id 99 doesn't exist in scratch_customers
+INSERT INTO scratch_orders VALUES (2, 99, 75.0);`} />
+
+## The two directions this happens
+
+**Inserting or updating a child row that points at a parent that doesn't
+exist** — the case above. The fix is almost always upstream: whatever
+created `customer_id = 99` on the order either has a bug, or is running
+before the customer row it depends on has been committed (a common one in
+batch loads and multi-step application logic — insert parents first).
+
+**Deleting a parent row something still references** — same constraint,
+the other direction. `scratch_orders` has a real row pointing at customer
+`1` from the block above, so deleting that customer is blocked too:
+
+<SqlRunner query={`DELETE FROM scratch_customers WHERE customer_id = 1;`} />
+
+If the delete is intentional, you generally have three honest options,
+declared on the constraint itself rather than worked around in every query
+that might delete a parent:
+- `ON DELETE CASCADE` — delete the children too.
+- `ON DELETE SET NULL` — orphan the children (nullify the foreign key column, which has to be nullable).
+- `ON DELETE RESTRICT` (the default behavior above) — refuse, which is usually right unless you've deliberately decided otherwise.
+
+## The SQLite-specific trap: it's off by default
+
+This is the one genuinely SQLite-specific gotcha on this page, and it
+surprises people from the *opposite* direction of every other error here —
+instead of erroring too eagerly, SQLite doesn't enforce foreign keys
+**at all** unless you turn it on for the connection — explicitly turning it
+back off here so this block is honest about the default, regardless of
+what ran earlier on this page:
+
+<SqlRunner query={`PRAGMA foreign_keys = OFF;
+DROP TABLE IF EXISTS scratch_orders2;
+DROP TABLE IF EXISTS scratch_customers2;
+
+CREATE TABLE scratch_customers2 (customer_id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE scratch_orders2 (
+  order_id    INTEGER PRIMARY KEY,
+  customer_id INTEGER,
+  amount      REAL,
+  FOREIGN KEY (customer_id) REFERENCES scratch_customers2(customer_id)
+);
+INSERT INTO scratch_customers2 VALUES (1, 'Acme Corp');
+
+-- customer_id 99 doesn't exist — and this succeeds anyway
+INSERT INTO scratch_orders2 VALUES (1, 99, 50.0);
+SELECT * FROM scratch_orders2;`} />
+
+That inserted an order pointing at a customer that doesn't exist, with no
+error — the exact `FOREIGN KEY REFERENCES` clause that would stop this in
+every other engine did nothing, because SQLite requires `PRAGMA
+foreign_keys = ON` to be set **on every connection**, every time — it's
+not a one-time schema setting, and most application frameworks and
+drivers don't turn it on for you. If you're relying on SQLite's foreign
+keys to catch bad data during development, verify the pragma is actually
+being set before trusting a clean run.
+
+<Related>
+- [Duplicate key / unique constraint violation](/fix/duplicate-key-unique-violation) — the other extremely common constraint error.
+- [DELETE](/docs/dml/delete) — deleting rows that other tables may reference.
+- [INSERT](/docs/dml/insert) — getting insert order right across related tables.
+</Related>
+
+<TryPlayground>Add `ON DELETE CASCADE` to the foreign key above and rerun the delete to see the difference.</TryPlayground>

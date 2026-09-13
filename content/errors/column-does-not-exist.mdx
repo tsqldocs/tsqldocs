@@ -1,0 +1,71 @@
+---
+title: '"column does not exist" / "no such column"'
+description: The column name in your query doesn't match the table's actual columns — a typo, a stale schema assumption, or a column you meant to reach through a join you didn't write.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["troubleshooting"]
+---
+
+- **SQLite:** `no such column: customre_id`
+- **PostgreSQL:** `ERROR: column "customre_id" does not exist`
+- **MySQL:** `Unknown column 'customre_id' in 'field list'`
+- **SQL Server:** `Invalid column name 'customre_id'.`
+
+<SqlRunner query={`SELECT customre_id FROM customers;`} />
+
+## The cause, roughly in order of likelihood
+
+1. **Typo.** Same story as [no such table](/fix/no-such-table) — check the
+   exact spelling against the table's real columns.
+2. **You're thinking of a column from a different, similarly-shaped table.**
+   Easy to do when several tables share a naming convention —
+   `orders.status` exists, `customers.status` doesn't.
+3. **The column is on a table you'd need to join to get to, and you
+   haven't joined it.** `orders.country` doesn't exist — `country` is on
+   `customers`, reachable only through the `customer_id` relationship.
+4. **A `SELECT *` alias hid it.** If you're referencing a column from a
+   subquery or CTE that only selects specific columns, anything not listed
+   there genuinely isn't available outside it — the error is correct, the
+   fix is to add the column to the inner `SELECT` list.
+5. **Case sensitivity** — same rules as on [no such table](/fix/no-such-table):
+   Postgres folds unquoted identifiers to lowercase, so a quoted, mixed-case
+   column name has to be quoted the same way everywhere it's used.
+
+## How to check what's actually there
+
+```sql
+-- PostgreSQL / MySQL
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'customers';
+
+-- SQL Server
+SELECT name FROM sys.columns
+WHERE object_id = OBJECT_ID('customers');
+
+-- SQLite
+PRAGMA table_info(customers);
+```
+
+<SqlRunner query={`PRAGMA table_info(customers);`} />
+
+The corrected query, once the column name is right:
+
+<SqlRunner query={`SELECT customer_id FROM customers LIMIT 5;`} />
+
+## When the column exists but only reachable through a join
+
+If you actually need a column from a different table, that's not a typo to
+fix — it's a missing join:
+
+<SqlRunner query={`SELECT o.order_id, c.country
+FROM orders o
+JOIN customers c ON c.customer_id = o.customer_id
+LIMIT 5;`} />
+
+<Related>
+- [no such table](/fix/no-such-table) — the same class of error, one level up.
+- [INNER JOIN](/docs/joins/inner-join) — pulling in a column that lives on another table.
+- [CTE](/docs/core/cte) — why a column not selected in a CTE's own query isn't visible outside it.
+</Related>
+
+<TryPlayground>Run `PRAGMA table_info(orders);` to see every column on the other seed table.</TryPlayground>

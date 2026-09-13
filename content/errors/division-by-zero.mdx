@@ -1,0 +1,72 @@
+---
+title: "Division by zero"
+description: Some engines throw a hard error, others silently return NULL — knowing which one you're on decides whether this bug crashes your query or just quietly corrupts a report.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["type-coercion", "troubleshooting"]
+---
+
+This is the rare error page here where the "fix" depends entirely on which
+engine you're reading this for — because they don't even agree on whether
+it's an error.
+
+- **PostgreSQL:** `ERROR: division by zero` — hard error, transaction aborts.
+- **SQL Server:** `Divide by zero error encountered.` — hard error, statement fails.
+- **MySQL:** returns `NULL` and a warning (`Warning: 1365 Division by 0`) —
+  unless `sql_mode` includes `ERROR_FOR_DIVISION_BY_ZERO` with strict mode,
+  in which case it errors instead.
+- **SQLite:** returns `NULL`. No error, no warning, nothing.
+
+<SqlRunner query={`SELECT amount / 0 AS result FROM orders LIMIT 1;`} />
+
+## Why this is worse than a normal error
+
+A hard error stops execution where the problem is, which is annoying but
+honest. A silent `NULL` does neither — the query succeeds, the row is
+still there, and the bad value quietly propagates into whatever aggregate
+or downstream calculation uses it. On the engines where this doesn't
+error, a zero denominator anywhere in a report can turn a real number into
+`NULL` with nothing in the output flagging that it happened.
+
+## The real-world version of this bug
+
+You rarely write `/ 0` directly — it shows up when a denominator comes
+from data and *can* legitimately be zero, like a conversion rate with no
+visits yet:
+
+<SqlRunner query={`SELECT category_id,
+       SUM(sales)                          AS total_sales,
+       COUNT(*)                            AS products,
+       SUM(sales) * 1.0 / COUNT(*)         AS avg_sales
+FROM product_sales
+GROUP BY category_id;`} />
+
+That's safe because `COUNT(*)` can't be zero for a group that exists. The
+risk is a denominator from a *different* table or an outer join, which can
+genuinely be zero (or `NULL`, which divides the same way) for rows that
+exist but have nothing on the other side.
+
+## The fix — guard it explicitly, on every engine
+
+Don't rely on engine behavior either way. `NULLIF` turns the zero into
+`NULL` before the division happens, which every engine treats as `NULL`
+÷ anything = `NULL` — no error, on Postgres or SQL Server either:
+
+<SqlRunner query={`SELECT amount / NULLIF(0, 0) AS safe_result FROM orders LIMIT 1;`} />
+
+If you want a fallback value instead of `NULL`, wrap the whole thing in
+`COALESCE`:
+
+<SqlRunner query={`SELECT COALESCE(amount / NULLIF(0, 0), 0) AS result_or_zero FROM orders LIMIT 1;`} />
+
+`NULLIF(x, 0)` and `COALESCE(..., fallback)` are both standard SQL and
+behave identically across Postgres, MySQL, SQL Server, and SQLite — the
+one piece of this page that isn't engine-dependent.
+
+<Related>
+- [COALESCE](/docs/functions/coalesce) — the fallback half of this pattern.
+- [Type coercion](/docs/core/type-coercion) — more places engines disagree instead of raising an error.
+- [NULLs](/docs/core/nulls) — why `NULLIF`'s output behaves the way it does once it's NULL.
+</Related>
+
+<TryPlayground>Compare the unguarded and guarded versions above, then try dividing by a column value that's actually zero somewhere in the seed data.</TryPlayground>

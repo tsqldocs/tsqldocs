@@ -1,0 +1,68 @@
+---
+title: "UNION: queries must have the same number of columns"
+description: Every SELECT combined with UNION, INTERSECT, or EXCEPT has to return the same number of columns, in a compatible order. Here's the fix and the type-compatibility trap that comes right after it.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["set-operations"]
+---
+
+- **SQLite:** `SELECTs to the left and right of UNION do not have the same number of result columns`
+- **PostgreSQL:** `ERROR: each UNION query must have the same number of columns`
+- **MySQL:** `The used SELECT statements have a different number of columns`
+- **SQL Server:** `All queries combined using a UNION, INTERSECT or EXCEPT operator must have an equal number of expressions in their target lists.`
+
+<SqlRunner query={`SELECT customer_id, name FROM customers
+UNION
+SELECT order_id FROM orders;`} />
+
+## The cause
+
+`UNION` (and `INTERSECT`, `EXCEPT`) stacks the results of two `SELECT`s into
+one result set — which only makes sense if both sides have the same shape:
+same number of columns, in an order where each pair is a compatible type.
+The left side selects two columns here; the right side selects one.
+
+## The fix — match the column count and order
+
+<SqlRunner query={`SELECT customer_id, name FROM customers
+UNION
+SELECT order_id, status FROM orders;`} />
+
+Columns are matched **by position, not by name** — the result's column
+headers come from the first `SELECT` regardless of what the second one
+calls them. If you need a placeholder to make the counts match, select a
+literal:
+
+<SqlRunner query={`SELECT customer_id, name FROM customers
+UNION
+SELECT order_id, NULL FROM orders;`} />
+
+## The next error waiting after this one: type mismatch
+
+Once the column counts agree, engines also expect each paired column to be
+a compatible type. Stack a text column against a numeric one and some
+engines error, others silently coerce — which is its own trap, since a
+query that "works" may just be quietly converting everything to text or
+truncating a number. Keep types aligned on purpose:
+
+<SqlRunner query={`SELECT customer_id, name, 'customer' AS record_type FROM customers
+UNION
+SELECT order_id, status, 'order' AS record_type FROM orders;`} />
+
+## UNION vs UNION ALL
+
+`UNION` also de-duplicates the combined result, which means a hidden sort
+or hash step on every query — often unwanted, and wasteful if the two
+sides can't produce duplicates anyway. If you don't need de-duplication,
+`UNION ALL` skips it and is the better default:
+
+<SqlRunner query={`SELECT customer_id, name FROM customers
+UNION ALL
+SELECT order_id, status FROM orders;`} />
+
+<Related>
+- [Set operations](/docs/core/set-operations) — UNION, INTERSECT, EXCEPT, and how each one treats duplicates.
+- [Type coercion](/docs/core/type-coercion) — what happens when paired columns don't share a type.
+</Related>
+
+<TryPlayground>Try pairing a numeric column against a text column above and see what each engine does with the mismatch.</TryPlayground>

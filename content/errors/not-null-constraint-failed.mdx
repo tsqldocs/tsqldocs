@@ -1,0 +1,76 @@
+---
+title: "NOT NULL constraint failed"
+description: You tried to insert or update a row without a value in a column that requires one. Straightforward once you know whether the value was left out or genuinely doesn't exist yet.
+date: "2026-09-13"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["constraints", "dml"]
+---
+
+- **SQLite:** `NOT NULL constraint failed: customers.name`
+- **PostgreSQL:** `ERROR: null value in column "name" of relation "customers" violates not-null constraint DETAIL: Failing row contains (8, null, US).`
+- **MySQL:** `Field 'name' doesn't have a default value` (column omitted entirely) or `Column 'name' cannot be null` (NULL passed explicitly, in strict mode)
+- **SQL Server:** `Cannot insert the value NULL into column 'name', table 'dbo.customers'; column does not allow nulls. INSERT fails.`
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
+CREATE TABLE scratch_customers (
+  customer_id INTEGER PRIMARY KEY,
+  name        TEXT NOT NULL,
+  country     TEXT
+);
+INSERT INTO scratch_customers (customer_id, country) VALUES (8, 'US');`} />
+
+## The cause
+
+`NOT NULL` is the simplest constraint there is — a column declared this
+way has to have a value on every row, full stop. The error fires whether
+the column was left out of the `INSERT` entirely (as above) or explicitly
+set to `NULL`:
+
+<SqlRunner query={`INSERT INTO scratch_customers (customer_id, name, country) VALUES (9, NULL, 'US');`} />
+
+## Three genuinely different situations, same error
+
+**You forgot the column.** The straightforward case — add it to the
+`INSERT`:
+
+<SqlRunner query={`INSERT INTO scratch_customers (customer_id, name, country) VALUES (8, 'New Co', 'US');
+SELECT * FROM scratch_customers;`} />
+
+**The value doesn't exist yet, and that's a real, temporary state** — a
+row created before some later process fills in the rest. `NOT NULL` can't
+express "required eventually, optional for now"; the honest fix is either
+a placeholder default, or splitting the column into its own nullable
+table until the value is actually known.
+
+**The column shouldn't be `NOT NULL` at all** — the constraint was right
+when written and the requirements changed, or it was too strict from the
+start. Relax it deliberately rather than routing around it with an empty
+string or a placeholder every insert site has to remember:
+
+```sql
+-- PostgreSQL / MySQL / SQL Server
+ALTER TABLE customers ALTER COLUMN name DROP NOT NULL;
+-- SQL Server's ALTER syntax differs slightly:
+ALTER TABLE customers ALTER COLUMN name VARCHAR(255) NULL;
+```
+
+SQLite can't drop a `NOT NULL` constraint directly — changing a column's
+constraints there means rebuilding the table (`CREATE TABLE ... AS SELECT`
+into a new definition, then swapping it in).
+
+## Don't reach for a default value to silence this
+
+Giving the column `DEFAULT ''` or `DEFAULT 'unknown'` makes the error go
+away without answering the actual question of whether a missing name is
+valid data. A default is right when the value has a genuine, meaningful
+default (`status DEFAULT 'pending'`); it's a workaround, not a fix, when
+it's just there to satisfy `NOT NULL` for a column that doesn't have one.
+
+<Related>
+- [Duplicate key / unique constraint violation](/fix/duplicate-key-unique-violation) — the other everyday constraint error.
+- [CHECK constraint failed](/fix/check-constraint-failed) — for rules beyond "has to have a value."
+- [NULLs](/docs/core/nulls) — how NULL behaves once a column allows it.
+- [INSERT](/docs/dml/insert) — column lists and defaults.
+</Related>
+
+<TryPlayground>Try inserting with the column omitted versus explicitly set to NULL — same error, two different mistakes to fix.</TryPlayground>
