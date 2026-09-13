@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useTheme } from 'next-themes';
 import { CheckIcon, CopyIcon, SparklesIcon } from 'lucide-react';
-import { useAISearchContext } from '@/components/ai/search';
+import { useAISearchContext, useAskAI } from '@/components/ai/search';
 
 const SqlEditor = dynamic(() => import('./sql-editor'), {
   ssr: false,
@@ -177,6 +177,7 @@ export function SqlRunner({
   const [copied, setCopied] = useState(false);
   const runningRef = useRef(false);
   const ai = useAISearchContext();
+  const askAIWith = useAskAI();
   const { resolvedTheme } = useTheme();
 
   const copy = useCallback(() => {
@@ -186,7 +187,6 @@ export function SqlRunner({
   }, [sql]);
 
   const askAI = useCallback(() => {
-    if (!ai) return;
     let context = '';
     if (state.status === 'ok' && state.results.length) {
       const r = state.results[0];
@@ -200,15 +200,8 @@ export function SqlRunner({
       `I'm using the SQL playground (SQLite, sample tables: customers, orders, ` +
       `employees, product_sales, monthly_revenue). I ran:\n\n\`\`\`sql\n${sql}\n\`\`\`` +
       `${context}\n\nExplain what this query does and why the result looks like that.`;
-    ai.setOpen(true);
-    void ai.chat.sendMessage({
-      role: 'user',
-      parts: [
-        { type: 'data-client', data: { location: location.href } },
-        { type: 'text', text },
-      ],
-    });
-  }, [ai, sql, state]);
+    askAIWith(text);
+  }, [askAIWith, sql, state]);
 
   const run = useCallback(async () => {
     if (runningRef.current) return;

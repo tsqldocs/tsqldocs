@@ -2,9 +2,11 @@ import { RootProvider } from 'fumadocs-ui/provider/next';
 import './global.css';
 import { Inter } from 'next/font/google';
 import Script from 'next/script';
+import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { appName, siteUrl } from '@/lib/shared';
 import { SiteFooter } from '@/components/site-footer';
+import { NavProgress } from '@/components/nav-progress';
 
 // Cloudflare Web Analytics. Set NEXT_PUBLIC_CF_BEACON_TOKEN at build time to
 // enable — leave it unset if you turn analytics on via the Cloudflare
@@ -42,6 +44,9 @@ export default function Layout({ children }: LayoutProps<'/'>) {
             __html: 'globalThis.__name||(globalThis.__name=function(f){return f});',
           }}
         />
+        <Suspense fallback={null}>
+          <NavProgress />
+        </Suspense>
         <RootProvider>
           {children}
           <SiteFooter />

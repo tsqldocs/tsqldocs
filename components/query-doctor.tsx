@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useTheme } from 'next-themes';
 import { StethoscopeIcon } from 'lucide-react';
-import { useAISearchContext } from '@/components/ai/search';
+import { useAskAI } from '@/components/ai/search';
 
 const SqlEditor = dynamic(() => import('./sql-editor'), {
   ssr: false,
@@ -26,10 +26,9 @@ export function QueryDoctor() {
   const [error, setError] = useState('');
   const [engine, setEngine] = useState(ENGINES[0]);
   const { resolvedTheme } = useTheme();
-  const ai = useAISearchContext();
+  const askAI = useAskAI();
 
   const diagnose = useCallback(() => {
-    if (!ai) return;
     const text = [
       `Diagnose this ${engine} query. Explain the root cause, give a corrected`,
       `query I can run as-is, and tell me how to avoid the mistake.`,
@@ -40,15 +39,8 @@ export function QueryDoctor() {
       error.trim() ? `\nError message:\n\n${error.trim()}` : '\n(No error message — it runs but the result is wrong or unexpected.)',
     ].join('\n');
 
-    ai.setOpen(true);
-    void ai.chat.sendMessage({
-      role: 'user',
-      parts: [
-        { type: 'data-client', data: { location: location.href } },
-        { type: 'text', text },
-      ],
-    });
-  }, [ai, sql, error, engine]);
+    askAI(text);
+  }, [askAI, sql, error, engine]);
 
   return (
     <div className="not-prose my-6 overflow-hidden rounded-xl border border-fd-border bg-fd-card">
@@ -92,7 +84,6 @@ export function QueryDoctor() {
         <button
           type="button"
           onClick={diagnose}
-          disabled={!ai}
           className="inline-flex items-center gap-2 rounded-md bg-fd-primary px-3 py-1.5 text-xs font-medium text-fd-primary-foreground transition hover:opacity-90 disabled:opacity-50"
         >
           <StethoscopeIcon className="size-3.5" />
