@@ -1,0 +1,67 @@
+---
+title: '"String or binary data would be truncated"'
+description: A value longer than the column's declared length — most engines reject it or truncate it with a warning. SQLite does neither; it just stores the whole thing.
+date: "2026-09-14"
+engines: ["PostgreSQL", "MySQL", "SQL Server"]
+tags: ["type-coercion", "constraints"]
+---
+
+- **SQL Server:** `String or binary data would be truncated.` (newer
+  versions name the table, column, and truncated value)
+- **PostgreSQL:** `ERROR: value too long for type character varying(3)`
+- **MySQL** (strict mode, the default since 5.7): `Data too long for column 'code' at row 1`
+  — outside strict mode, MySQL truncates and issues a warning instead of an
+  error.
+
+This is the rare page here where SQLite isn't even in the list above,
+because it doesn't participate in the error at all:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_codes;
+CREATE TABLE scratch_codes (code VARCHAR(3));
+INSERT INTO scratch_codes VALUES ('HELLO WORLD, THIS IS WAY MORE THAN THREE CHARACTERS');
+SELECT code, length(code) AS actual_length FROM scratch_codes;`} />
+
+That inserted a 52-character string into a column declared `VARCHAR(3)`,
+with zero complaint, and stored every character of it.
+
+## The cause
+
+SQLite doesn't actually have fixed-length or maximum-length string types.
+`VARCHAR(3)`, `VARCHAR(255)`, `TEXT`, and `CHAR(1)` are all the same
+underlying storage class in SQLite (it derives a *type affinity* from the
+declaration, not an enforced length) — the `(3)` is accepted as valid
+syntax and then completely ignored. This is intentional, documented SQLite
+behavior, not a bug — but it means a schema copied from Postgres or MySQL
+loses a real constraint the moment it lands in SQLite, silently.
+
+## Why this matters beyond SQLite itself
+
+If your local dev environment or your test suite runs on SQLite while
+production runs Postgres, MySQL, or SQL Server, a length violation that
+would fail loudly in production can pass every local test — the schema
+*looks* identical, but the constraint it describes isn't actually being
+checked. Data that should never have been accepted makes it into your
+local database, your tests stay green, and the first time the length
+limit is enforced for real is in production.
+
+## The fix — enforce it where you actually need it enforced
+
+If your application needs a guaranteed maximum length and might run
+against SQLite (directly, or via a test suite), validate the length in
+application code rather than relying on the column definition — don't
+assume the schema is doing work it isn't. On a server engine, the column
+length is real and does the job on its own:
+
+```sql
+-- PostgreSQL / MySQL / SQL Server: this column definition is enforced
+CREATE TABLE codes (code VARCHAR(3));
+INSERT INTO codes VALUES ('TOOLONG');  -- rejected (or truncated w/ warning on MySQL)
+```
+
+<Related>
+- [Type coercion](/docs/core/type-coercion) — more places SQLite is looser than the engines it's often used to prototype for.
+- [NOT NULL constraint failed](/fix/not-null-constraint-failed) — a constraint SQLite *does* enforce, for contrast.
+- [SQL dialect comparison](/dialects) — column type differences across engines.
+</Related>
+
+<TryPlayground>Try a `CHAR(1)` column instead of `VARCHAR(3)` above — same result.</TryPlayground>

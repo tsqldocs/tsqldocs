@@ -1,0 +1,73 @@
+---
+title: '"relation already exists" / "Table already exists"'
+description: A CREATE TABLE ran against a name the database already has. Usually a re-run script, sometimes a genuine naming collision — IF NOT EXISTS fixes the first, not the second.
+date: "2026-09-14"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["troubleshooting", "ddl"]
+---
+
+- **SQLite:** `table customers already exists`
+- **PostgreSQL:** `ERROR: relation "customers" already exists`
+- **MySQL:** `Table 'customers' already exists`
+- **SQL Server:** `There is already an object named 'customers' in the database.`
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
+CREATE TABLE scratch_customers (customer_id INTEGER PRIMARY KEY, name TEXT);
+
+-- running the same CREATE TABLE again hits this error
+CREATE TABLE scratch_customers (customer_id INTEGER PRIMARY KEY, name TEXT);`} />
+
+## Two different situations, one error
+
+**A setup script or migration got run twice.** By far the most common
+cause — a `CREATE TABLE` that ran successfully once shouldn't run again,
+but something re-executed it: a re-deployed migration, a retried setup
+step, a script run manually a second time by mistake. The fix is making
+the script safe to re-run, not chasing the error each time:
+
+<SqlRunner query={`CREATE TABLE IF NOT EXISTS scratch_customers (customer_id INTEGER PRIMARY KEY, name TEXT);
+SELECT 'no error' AS result;`} />
+
+`IF NOT EXISTS` makes the statement a no-op when the table is already
+there instead of erroring — every engine on this page supports it with
+this exact syntax.
+
+**Two different things actually needed two different names**, and they
+collided by coincidence — a genuinely new table happened to be named the
+same as an existing one for something unrelated. `IF NOT EXISTS` is the
+wrong fix here: it would silently skip creating your new table and leave
+the *old* one in place under a name you now think belongs to something
+else. Rename the new table instead of suppressing the error.
+
+## Telling the two apart
+
+Before reaching for `IF NOT EXISTS` as a reflex, check what the existing
+table actually contains — if a table you expected to be creating fresh
+already has unexpected data or a different shape, that's the second
+case, not the first:
+
+```sql
+-- PostgreSQL / MySQL
+SELECT column_name, data_type FROM information_schema.columns
+WHERE table_name = 'customers';
+
+-- SQLite
+PRAGMA table_info(customers);
+```
+
+## The DROP-then-CREATE trap
+
+A common but dangerous "fix" for this error in a script is `DROP TABLE
+customers; CREATE TABLE customers (...);` — this makes the script
+re-runnable, but it also silently deletes everything in the table on
+every re-run. If the table is supposed to accumulate real data between
+runs, that's not idempotency, it's data loss with a green checkmark.
+`CREATE TABLE IF NOT EXISTS` doesn't have this problem, because it
+leaves an existing table — and its data — untouched.
+
+<Related>
+- [no such table](/fix/no-such-table) — the opposite problem, one level up.
+- [Duplicate column name](/fix/duplicate-column-name) — the same idea, one level down, on `ALTER TABLE`.
+</Related>
+
+<TryPlayground>Run the plain `CREATE TABLE` twice above, then the `IF NOT EXISTS` version, and compare.</TryPlayground>

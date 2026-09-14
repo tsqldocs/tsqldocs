@@ -1,0 +1,72 @@
+---
+title: '"Duplicate column name" (ALTER TABLE ADD COLUMN)'
+description: You tried to add a column with a name the table already has. Usually a re-run migration — sometimes a sign the column was never actually missing in the first place.
+date: "2026-09-14"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["troubleshooting", "ddl"]
+---
+
+- **SQLite:** `duplicate column name: country`
+- **PostgreSQL:** `ERROR: column "country" of relation "customers" already exists`
+- **MySQL:** `Duplicate column name 'country'`
+- **SQL Server:** `Column names in each table must be unique. Column name 'country' in table 'customers' is specified more than once.`
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
+CREATE TABLE scratch_customers (customer_id INTEGER PRIMARY KEY, name TEXT, country TEXT);
+
+-- country already exists on this table
+ALTER TABLE scratch_customers ADD COLUMN country TEXT;`} />
+
+## The cause — almost always a re-run migration
+
+This is the `ALTER TABLE` sibling of [table already
+exists](/fix/table-already-exists), and the most common cause is
+identical: a migration that added this column already ran once, and
+something re-ran it — a re-deployed migration, a migration tool that
+lost track of what already applied, or a manual `ALTER TABLE` run twice
+by accident.
+
+## Check for IF NOT EXISTS support before reaching for it
+
+Unlike `CREATE TABLE IF NOT EXISTS`, support for the equivalent on
+`ALTER TABLE ADD COLUMN` **isn't universal** — check before relying on it:
+
+- **PostgreSQL** (9.6+): supports it directly —
+  `ALTER TABLE customers ADD COLUMN IF NOT EXISTS country TEXT;`
+- **MySQL** (8.0.29+): supports it directly, same syntax.
+- **SQL Server**: no `IF NOT EXISTS` on `ADD COLUMN` — guard it explicitly
+  instead:
+  ```sql
+  IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID('customers') AND name = 'country'
+  )
+  ALTER TABLE customers ADD country VARCHAR(100);
+  ```
+- **SQLite**: no `IF NOT EXISTS` on `ADD COLUMN` either — same pattern,
+  check `PRAGMA table_info` first:
+
+<SqlRunner query={`SELECT COUNT(*) AS already_has_column
+FROM pragma_table_info('scratch_customers')
+WHERE name = 'country';`} />
+
+Since that returns `1`, the real migration tooling for this table should
+skip re-adding `country` — which is exactly what a proper migration
+framework's own tracking table is for; this pragma check is what to reach
+for only when writing raw, ad-hoc DDL without one.
+
+## The other case: the column was never actually missing
+
+If this error shows up unexpectedly — not from a known re-run, but from a
+migration you believed was adding a genuinely new column — stop and check
+whether an earlier migration (or a manual change) already added it under
+the same name, possibly with a different type or constraint than the one
+you're about to add. Blindly working around the error here can leave you
+with the wrong column definition and no error to tell you.
+
+<Related>
+- [table already exists](/fix/table-already-exists) — the same idea, one level up, on `CREATE TABLE`.
+- [Ambiguous column name](/fix/ambiguous-column-name) — a different duplicate-name problem, this one across joined tables instead of within one.
+</Related>
+
+<TryPlayground>Run the `PRAGMA table_info` check above against a column that doesn't exist yet and confirm it returns `0`.</TryPlayground>

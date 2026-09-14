@@ -1,0 +1,86 @@
+---
+title: '"ON CONFLICT clause does not match any... constraint"'
+description: You named a conflict target in an upsert that isn't actually backed by a unique or primary key constraint. Postgres and SQLite both require one — here's why, and the two ways to fix it.
+date: "2026-09-14"
+engines: ["PostgreSQL", "SQLite"]
+tags: ["dml", "constraints"]
+---
+
+- **PostgreSQL:** `ERROR: there is no unique or exclusion constraint matching the ON CONFLICT specification`
+- **SQLite:** `ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint`
+
+This is specific to Postgres and SQLite's `ON CONFLICT` upsert syntax —
+MySQL's `ON DUPLICATE KEY UPDATE` and SQL Server's `MERGE` don't name an
+explicit conflict target the same way, so they don't have a direct
+equivalent of this particular error. See [UPSERT](/docs/dml/upsert) for
+how each engine's syntax actually differs.
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
+CREATE TABLE scratch_customers (
+  customer_id INTEGER PRIMARY KEY,
+  email       TEXT,
+  name        TEXT
+);
+INSERT INTO scratch_customers VALUES (1, 'a@x.com', 'Acme Corp');
+
+INSERT INTO scratch_customers (customer_id, email, name)
+VALUES (2, 'a@x.com', 'Also Acme')
+ON CONFLICT (email) DO UPDATE SET name = excluded.name;`} />
+
+## The cause
+
+`ON CONFLICT (column)` tells the engine "detect a conflict when this
+column collides with an existing row" — but that's only a meaningful,
+enforceable promise if the column actually has a `UNIQUE` or `PRIMARY
+KEY` constraint backing it. Here, `email` has no such constraint —
+`customer_id` does, but the query named `email` instead. Without a real
+constraint, the engine has no mechanism to even detect the conflict in
+the first place, so it refuses outright rather than silently doing
+nothing.
+
+This is a stricter, more honest failure than it might first seem: it's
+not complaining that a conflict didn't happen, it's complaining that
+`ON CONFLICT (email)` is a promise the schema doesn't back up.
+
+## The fix — pick one
+
+**The column should be unique — add the constraint** (the more common
+fix, if duplicate emails genuinely shouldn't be allowed). On Postgres:
+
+```sql
+ALTER TABLE customers ADD CONSTRAINT customers_email_unique UNIQUE (email);
+```
+
+SQLite doesn't support `ADD CONSTRAINT` on an existing table — a unique
+index is the equivalent there, and `ON CONFLICT` will honor it exactly
+like a named constraint:
+
+<SqlRunner query={`CREATE UNIQUE INDEX scratch_customers_email_unique ON scratch_customers(email);
+
+INSERT INTO scratch_customers (customer_id, email, name)
+VALUES (2, 'a@x.com', 'Also Acme')
+ON CONFLICT (email) DO UPDATE SET name = excluded.name;
+SELECT * FROM scratch_customers;`} />
+
+Only one row comes back, and it's still `customer_id = 1` — not a new
+row `2`. That's `ON CONFLICT (email)` working exactly as designed now
+that there's a real constraint behind it: it found the *existing* row
+with that email and updated its `name`, rather than creating a second row
+with a duplicate email. The `customer_id = 2` in the `INSERT` never gets
+used at all once a conflict is detected.
+
+**Or target the column that's actually constrained** — usually the
+primary key, if that's really what identifies "the same row" for this
+upsert:
+
+<SqlRunner query={`INSERT INTO scratch_customers (customer_id, email, name)
+VALUES (1, 'a@x.com', 'Acme Corp (Updated)')
+ON CONFLICT (customer_id) DO UPDATE SET name = excluded.name;
+SELECT * FROM scratch_customers;`} />
+
+<Related>
+- [UPSERT](/docs/dml/upsert) — the full `ON CONFLICT` syntax and its equivalents on MySQL and SQL Server.
+- [Duplicate key / unique constraint violation](/fix/duplicate-key-unique-violation) — what happens on the *plain* `INSERT` side of this same constraint.
+</Related>
+
+<TryPlayground>Add the unique index on `email` above, then rerun the original conflicting insert — it becomes a real upsert instead of an error.</TryPlayground>

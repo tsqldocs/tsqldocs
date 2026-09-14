@@ -1,0 +1,66 @@
+---
+title: "CAST / CONVERT failure — invalid value for type"
+description: You tried to convert a value into a type it doesn't actually fit — text that isn't a number, a number that overflows, a string that isn't a date. Most engines reject it outright; SQLite quietly does its best guess instead.
+date: "2026-09-14"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["type-coercion"]
+---
+
+- **PostgreSQL:** `ERROR: invalid input syntax for type integer: "abc"`
+- **SQL Server:** `Conversion failed when converting the varchar value 'abc' to data type int.`
+- **MySQL** (strict mode): `ERROR 1366 (HY000): Incorrect integer value: 'abc' for column ...` —
+  outside strict mode, MySQL converts to `0` with a warning instead of an error.
+- **SQLite:** no error at all — see below.
+
+<SqlRunner query={`SELECT CAST('abc' AS INTEGER) AS result;`} />
+
+## SQLite's actual rule: best-effort prefix parsing, not all-or-nothing
+
+SQLite's `CAST` never fails — it does the closest thing it can and moves
+on. For text-to-number conversions specifically, that means reading as
+much of a valid number from the *start* of the string as it can, and
+treating the rest as if it weren't there:
+
+<SqlRunner query={`SELECT CAST('abc' AS INTEGER)    AS no_leading_digits,
+       CAST('42' AS INTEGER)     AS clean_number,
+       CAST('42abc' AS INTEGER)  AS partial_prefix,
+       CAST('  42' AS INTEGER)   AS leading_whitespace;`} />
+
+`'abc'` has no numeric prefix at all, so it becomes `0`. `'42abc'` reads
+the leading `42` and silently drops `abc` — it does **not** error, and it
+does **not** return `NULL`. That's the sharpest version of this trap:
+a string that's *almost* a valid number produces a plausible-looking
+result with no indication that anything was discarded.
+
+## Where this actually causes damage
+
+Anywhere user input or an upstream system's text field gets cast straight
+into a number without validation first — a form field, a CSV import, an
+API payload treated as trusted. On Postgres, SQL Server, or strict-mode
+MySQL, bad input stops the statement and you find out immediately. On
+SQLite, `'N/A'`, `'unknown'`, or a stray unit suffix like `'42kg'` all
+convert to *something* and the bad data flows straight into your table.
+
+## The fix — validate before you cast, don't rely on CAST to validate for you
+
+If you need to know whether a string is genuinely a valid number (rather
+than just wanting a best-effort numeric value), check it explicitly
+first:
+
+<SqlRunner query={`SELECT value,
+       CASE WHEN value NOT GLOB '*[^0-9]*' AND value != ''
+            THEN 'looks numeric' ELSE 'reject' END AS check_result
+FROM (SELECT '42' AS value UNION ALL SELECT '42abc' UNION ALL SELECT 'abc') t;`} />
+
+That `GLOB` check is SQLite-specific syntax; the underlying principle —
+validate before you trust a cast to fail loudly — applies everywhere,
+since on the engines where `CAST` *does* error, letting it fail mid-batch
+is still often worse than checking upfront and reporting exactly which
+rows are bad.
+
+<Related>
+- [Type coercion](/docs/core/type-coercion) — the general rules for how values move between types.
+- [Integer division returns 0](/fix/integer-division-returns-zero) — the other silent-arithmetic trap in this family.
+</Related>
+
+<TryPlayground>Try casting `'3.14abc'` to `INTEGER` and to `REAL` and compare what each keeps.</TryPlayground>

@@ -1,0 +1,74 @@
+---
+title: "Integer division returns 0 (or truncates)"
+description: 7 / 2 comes back 3, not 3.5, on every major engine — integer divided by integer stays an integer. Not a bug, but the single most common silent-wrong-result mistake in SQL.
+date: "2026-09-14"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["type-coercion"]
+---
+
+There's no error text to quote on this page — that's the problem. Every
+major engine agrees on this one, silently:
+
+<SqlRunner query={`SELECT 7 / 2 AS result;`} />
+
+`3`, not `3.5`. When both operands of `/` are integers — integer columns
+or integer literals — the result stays an integer, truncated toward zero,
+on Postgres, MySQL, SQL Server, and SQLite alike. This is standard SQL
+behavior, not an engine quirk, and it produces no warning anywhere.
+
+## Where it actually bites
+
+Real division almost never looks like a literal `7 / 2` — it's usually a
+ratio computed from integer columns, and it reads correctly at a glance:
+
+<SqlRunner query={`SELECT employee_id, salary, salary / 12 AS monthly_pay
+FROM employees;`} />
+
+`salary` is an integer column; `12` is an integer literal — so the result
+truncates every row's fractional cents, silently. The bug hides especially
+well when it *sometimes* comes out even by coincidence, so a few rows of
+manual testing don't catch it.
+
+## The fix — force one operand to be non-integer
+
+Cast either side, or multiply by a decimal literal — either makes the
+whole expression real/float arithmetic:
+
+<SqlRunner query={`SELECT 7 / 2.0        AS with_decimal_literal,
+       CAST(7 AS REAL) / 2  AS with_cast,
+       7 * 1.0 / 2          AS with_multiply;`} />
+
+Applied to the earlier query:
+
+<SqlRunner query={`SELECT employee_id, salary, salary * 1.0 / 12 AS monthly_pay
+FROM employees;`} />
+
+## Watch for it inside aggregates too
+
+`SUM(a) / COUNT(*)` has the exact same trap if both sides happen to be
+integer-typed — cast the division, not the inputs to `SUM`:
+
+<SqlRunner query={`SELECT department_id,
+       SUM(salary)                    AS total,
+       COUNT(*)                       AS headcount,
+       SUM(salary) / COUNT(*)         AS avg_salary
+FROM employees
+GROUP BY department_id;`} />
+
+Every department's average lands on a suspiciously round number — because
+it's silently floored. The corrected version:
+
+<SqlRunner query={`SELECT department_id,
+       SUM(salary)                    AS total,
+       COUNT(*)                       AS headcount,
+       SUM(salary) * 1.0 / COUNT(*)   AS avg_salary
+FROM employees
+GROUP BY department_id;`} />
+
+<Related>
+- [Type coercion](/docs/core/type-coercion) — the broader rules for how engines mix numeric types.
+- [Division by zero](/fix/division-by-zero) — the other everyday arithmetic trap, right next to this one.
+- [AVG](/docs/functions/avg) — usually the better tool than hand-rolling `SUM(a) / COUNT(*)`, when it fits.
+</Related>
+
+<TryPlayground>Try `salary / 13` above and check which employees land on a whole number by coincidence, hiding the bug.</TryPlayground>
