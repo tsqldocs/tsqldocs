@@ -15,6 +15,8 @@ import {
 import { SqlRunner } from '@/components/sql-runner';
 import { HeroFlow } from '@/components/hero-flow';
 import { getBlogPosts, blogSlug, formatBlogDate } from '@/lib/blog-source';
+import { source } from '@/lib/source';
+import { getErrorPages } from '@/lib/error-source';
 
 const HERO_QUERY = `SELECT
   c.name,
@@ -99,6 +101,11 @@ const differentiators = [
 
 export default function HomePage() {
   const posts = getBlogPosts().slice(0, 3);
+  const stats = [
+    { value: source.getPages().length, label: 'reference pages' },
+    { value: getErrorPages().length, label: 'SQL errors decoded' },
+    { value: getBlogPosts().length, label: 'in-depth guides' },
+  ];
 
   return (
     <main className="flex flex-1 flex-col">
@@ -175,6 +182,14 @@ export default function HomePage() {
           Reference, runnable examples, an AI assistant, and a diagnostic tool for the query that
           won&rsquo;t cooperate.
         </p>
+
+        <div className="mt-5 flex flex-wrap gap-x-6 gap-y-1.5 text-sm text-fd-muted-foreground">
+          {stats.map((s) => (
+            <span key={s.label}>
+              <strong className="font-semibold text-fd-foreground">{s.value}</strong> {s.label}
+            </span>
+          ))}
+        </div>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sections.map((s) => (
