@@ -1,0 +1,75 @@
+---
+title: '"near "TRUNCATE": syntax error"'
+description: TRUNCATE TABLE isn't a SQLite statement at all — it doesn't exist, not even in a limited form. Here's what to use instead, and why it isn't quite the same thing.
+date: "2026-09-15"
+engines: ["SQLite"]
+tags: ["troubleshooting", "ddl"]
+---
+
+Postgres, MySQL, and SQL Server all support `TRUNCATE TABLE` as a fast way
+to empty a table. SQLite doesn't have the statement at all:
+
+<SqlRunner query={`TRUNCATE TABLE customers;`} />
+
+That's a plain syntax error, not a "not supported for this table" message
+— SQLite's parser doesn't recognize the keyword `TRUNCATE` in this
+position because the statement was never implemented.
+
+## The replacement — and the one real difference
+
+A bare `DELETE` with no `WHERE` clause does the same job in SQLite:
+
+```sql
+DELETE FROM customers;
+```
+
+For most purposes this is functionally equivalent to `TRUNCATE` — every
+row gone, table definition intact. The difference that occasionally
+matters: on the server engines, `TRUNCATE` is typically a fast,
+minimally-logged operation that also resets any auto-increment counter
+back to its starting value; a plain `DELETE` on those same engines is
+row-by-row logged and does **not** reset the counter. SQLite's `DELETE
+FROM table;` (with no `WHERE`) is actually optimized internally to skip
+row-by-row processing too — but it still won't reset an `AUTOINCREMENT`
+sequence on its own.
+
+## Resetting the auto-increment counter too
+
+If the table uses `INTEGER PRIMARY KEY AUTOINCREMENT`, SQLite tracks the
+next value in its internal `sqlite_sequence` table — a plain `DELETE`
+leaves that counter untouched:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_widgets;
+CREATE TABLE scratch_widgets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT);
+INSERT INTO scratch_widgets (name) VALUES ('a'), ('b'), ('c');
+
+DELETE FROM scratch_widgets;
+INSERT INTO scratch_widgets (name) VALUES ('d');
+SELECT * FROM scratch_widgets;`} />
+
+`d` comes back as `id = 4`, not `1` — three rows were deleted, but the
+counter kept counting from where it left off. Clear the counter's own
+row too if you need IDs to genuinely restart from 1:
+
+<SqlRunner query={`DELETE FROM scratch_widgets;
+DELETE FROM sqlite_sequence WHERE name = 'scratch_widgets';
+
+INSERT INTO scratch_widgets (name) VALUES ('e');
+SELECT * FROM scratch_widgets;`} />
+
+Now `e` comes back as `id = 1`.
+
+## Writing portable "reset this table" logic
+
+If the same code needs to run against SQLite and a server engine, prefer
+`DELETE FROM table;` for a genuinely portable statement over branching
+your code on which engine it's talking to — the row-by-row-logging
+tradeoff rarely matters for the "reset a scratch/dev table" use case this
+usually comes up for, and it works everywhere without a dialect check.
+
+<Related>
+- [DELETE](/docs/dml/delete) — the statement this page recommends in place of `TRUNCATE`.
+- [SQL dialect comparison](/dialects) — more places SQLite's supported statement set is smaller than the server engines'.
+</Related>
+
+<TryPlayground>Run the second example again without the `sqlite_sequence` line and check that the counter keeps climbing instead of resetting.</TryPlayground>

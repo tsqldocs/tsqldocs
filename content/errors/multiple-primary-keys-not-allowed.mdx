@@ -1,0 +1,76 @@
+---
+title: '"Multiple primary keys for table are not allowed"'
+description: You marked two separate columns PRIMARY KEY on the same table. A table can only have one primary key — if you meant both columns together should be unique, that's a composite key, different syntax.
+date: "2026-09-15"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["ddl", "constraints"]
+---
+
+- **SQLite:** `table "order_items" has more than one primary key`
+- **PostgreSQL:** `ERROR: multiple primary keys for table "order_items" are not allowed`
+- **MySQL:** `Multiple primary key defined`
+- **SQL Server:** `Multiple primary keys cannot be created on table 'order_items'.`
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_order_items;
+CREATE TABLE scratch_order_items (
+  order_id   INTEGER PRIMARY KEY,
+  product_id INTEGER PRIMARY KEY,
+  quantity   INTEGER
+);`} />
+
+## The cause
+
+`PRIMARY KEY` on a column isn't just "this column needs an index" — it's
+a declaration of *the* thing that identifies a row in this table.
+There can only be one. Writing `PRIMARY KEY` after two different columns
+looks like it means "both of these together uniquely identify a row,"
+but that's not what the syntax says — it declares two separate,
+conflicting primary keys, which the engine refuses outright rather than
+guess which one you meant.
+
+## The fix — table-level composite key syntax
+
+What was actually meant here is almost always a **composite primary
+key** — `order_id` and `product_id` together uniquely identify a row
+(one row per product per order), even though neither one does alone.
+That needs the table-level form, not two column-level `PRIMARY KEY`s:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_order_items;
+CREATE TABLE scratch_order_items (
+  order_id   INTEGER,
+  product_id INTEGER,
+  quantity   INTEGER,
+  PRIMARY KEY (order_id, product_id)
+);
+INSERT INTO scratch_order_items VALUES (1, 100, 2), (1, 101, 1), (2, 100, 5);
+SELECT * FROM scratch_order_items;`} />
+
+Now `(1, 100)` can only appear once, but `1` alone (as `order_id`) and
+`100` alone (as `product_id`) can each recur across different rows — one
+order can have many products, and one product can appear on many orders,
+just not the exact same pairing twice:
+
+<SqlRunner query={`INSERT INTO scratch_order_items VALUES (1, 100, 9);`} />
+
+That fails — `(1, 100)` already exists — which is the composite key
+doing exactly its job.
+
+## If you genuinely need two independent uniqueness rules
+
+That's not a primary key question at all — a table can have one primary
+key and any number of separate `UNIQUE` constraints on other columns:
+
+```sql
+CREATE TABLE users (
+  user_id INTEGER PRIMARY KEY,
+  email   TEXT UNIQUE,     -- a second, independent uniqueness rule
+  handle  TEXT UNIQUE       -- and a third
+);
+```
+
+<Related>
+- [Duplicate key / unique constraint violation](/fix/duplicate-key-unique-violation) — what happens when a row actually collides with a key like this.
+- [INSERT](/docs/dml/insert) — multi-row inserts, including into tables with composite keys.
+</Related>
+
+<TryPlayground>Try inserting `(2, 100, 1)` into the composite-key table above — same `product_id`, different `order_id` — and confirm it succeeds.</TryPlayground>

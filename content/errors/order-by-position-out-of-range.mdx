@@ -1,0 +1,72 @@
+---
+title: '"ORDER BY position ... is not in select list"'
+description: You sorted (or grouped) by a column number that doesn't exist in the SELECT list — usually because a column got added or removed and a positional reference further down wasn't updated.
+date: "2026-09-15"
+engines: ["PostgreSQL", "SQL Server", "SQLite"]
+tags: ["troubleshooting"]
+---
+
+- **PostgreSQL:** `ERROR: ORDER BY position 5 is not in select list`
+- **SQL Server:** `The ORDER BY position number 5 is out of range in the select list which is only 2 items.`
+- **SQLite:** `1st ORDER BY term out of range - should be between 1 and 2`
+- **MySQL** raises an equivalent "unknown column" style error for the same
+  mistake — the exact wording varies by version, but the cause and fix
+  below are identical.
+
+`ORDER BY` (and `GROUP BY`) accept a plain integer as shorthand for "the
+Nth column in the SELECT list" — `ORDER BY 2` instead of repeating the
+actual expression. It's valid, common shorthand right up until the
+SELECT list changes shape and the number no longer points at anything:
+
+<SqlRunner query={`SELECT customer_id, name
+FROM customers
+ORDER BY 5;`} />
+
+Only two columns are selected — there is no 5th.
+
+## Why this happens in practice
+
+Almost never because someone typed `5` by hand for a 2-column query —
+it's because the query used to have five columns (or five expressions,
+including ones later merged or removed), a column got dropped from the
+`SELECT` list during a later edit, and the positional reference at the
+bottom was never updated to match:
+
+<SqlRunner query={`SELECT customer_id, name
+FROM customers
+ORDER BY 2;`} />
+
+`ORDER BY 2` now correctly means "sort by `name`," the 2nd column — but
+if someone reorders the `SELECT` list later without touching this line,
+it will silently start sorting by a *different* column instead of
+erroring, since the position is still technically in range. That's the
+sharper version of this trap: an out-of-range position is at least loud
+about it; an in-range-but-now-wrong position isn't.
+
+The same applies to `GROUP BY`:
+
+<SqlRunner query={`SELECT customer_id, COUNT(*)
+FROM orders
+GROUP BY 5;`} />
+
+## The fix
+
+Prefer the actual column name or expression over a position, especially
+in any query you expect to be edited later — it survives a reordered
+`SELECT` list instead of silently pointing at the wrong thing:
+
+<SqlRunner query={`SELECT customer_id, name
+FROM customers
+ORDER BY name;`} />
+
+Positional references still have a legitimate use — an `ORDER BY` on a
+computed expression too long or awkward to repeat verbatim — but for a
+plain column reference, naming it costs nothing and removes this failure
+mode entirely.
+
+<Related>
+- [ORDER BY](/docs/core/order-by) — sorting basics, including sorting by an expression not in the SELECT list at all.
+- [GROUP BY](/docs/core/group-by) — the grouping side of this same shorthand.
+</Related>
+
+<TryPlayground>Add a third column to the SELECT list above and see whether `ORDER BY 3` still means what you'd expect.</TryPlayground>

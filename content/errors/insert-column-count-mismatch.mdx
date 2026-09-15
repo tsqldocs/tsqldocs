@@ -1,0 +1,64 @@
+---
+title: '"Column count doesn''t match value count"'
+description: The number of values in your INSERT doesn't match the number of columns — either the column list, or a row in a multi-row VALUES list, is short or long by one.
+date: "2026-09-15"
+engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+tags: ["dml"]
+---
+
+- **SQLite:** `3 values for 2 columns`
+- **PostgreSQL:** `ERROR: INSERT has more expressions than target columns`
+  (or the reverse: `INSERT has more target columns than expressions`)
+- **MySQL:** `Column count doesn't match value count at row 1`
+- **SQL Server:** `Column name or number of supplied values does not match table definition.`
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
+CREATE TABLE scratch_customers (customer_id INTEGER PRIMARY KEY, name TEXT);
+
+INSERT INTO scratch_customers (customer_id, name) VALUES (9, 'Extra Corp', 'oops');`} />
+
+Two columns named, three values given.
+
+## The two directions
+
+**Too many values** — an extra column crept into the `VALUES` list that
+isn't in the column list (shown above), often from copy-pasting a row
+template from a table with more columns.
+
+**Too few values** — a column was added to the column list (or to the
+table, when no column list is given at all) but an existing `VALUES` row
+wasn't updated to match:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders;
+CREATE TABLE scratch_orders (order_id INTEGER PRIMARY KEY, customer_id INTEGER, status TEXT);
+
+INSERT INTO scratch_orders (order_id, customer_id, status) VALUES (1, 9);`} />
+
+## Where this bites hardest: multi-row INSERT
+
+A single-row mistake fails immediately and obviously. The same typo in
+one row of a 50-row `VALUES` list still fails the whole statement — which
+is the good outcome. The genuinely dangerous version is a **generated**
+`INSERT`, where a template string is built per row in application code
+and one row's data happens to be missing a field (a `NULL`/undefined
+value that got dropped instead of included as `NULL`) — that produces
+this exact error, but only for the one malformed row buried among
+otherwise-correct ones, making it look like a data problem rather than
+the query-generation bug it actually is.
+
+## The fix
+
+Count columns against values explicitly rather than eyeballing it — and
+prefer always naming the column list explicitly, even when inserting
+into every column, so a later `ALTER TABLE ADD COLUMN` doesn't silently
+change what a bare `INSERT INTO t VALUES (...)` means:
+
+<SqlRunner query={`INSERT INTO scratch_customers (customer_id, name) VALUES (9, 'Extra Corp');
+SELECT * FROM scratch_customers;`} />
+
+<Related>
+- [INSERT](/docs/dml/insert) — multi-row insert syntax and the explicit-column-list convention this error is arguing for.
+- [Duplicate column name](/fix/duplicate-column-name) — the `ALTER TABLE` side of a schema drifting out from under a hand-written INSERT.
+</Related>
+
+<TryPlayground>Try a multi-row `VALUES` list where only the second row is missing a value, and see that the whole statement fails, not just that row.</TryPlayground>

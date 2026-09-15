@@ -1,0 +1,74 @@
+---
+title: "Comparing a number to text silently matches nothing"
+description: A numeric column compared to a non-numeric string doesn't always error — on some engines it just quietly returns no rows, no warning, no hint that the comparison itself was the problem.
+date: "2026-09-15"
+engines: ["PostgreSQL", "SQL Server", "MySQL", "SQLite"]
+tags: ["type-coercion"]
+---
+
+This one splits engines into two camps, and the split isn't the usual
+"SQLite is the outlier" — MySQL is on SQLite's side of this one.
+
+**Postgres and SQL Server reject it outright:**
+
+- **PostgreSQL:** `ERROR: invalid input syntax for type integer: "abc"`
+- **SQL Server:** `Conversion failed when converting the varchar value 'abc' to data type int.`
+
+**MySQL and SQLite let it through — and just return nothing:**
+
+<SqlRunner query={`SELECT * FROM customers WHERE customer_id = 'abc';`} />
+
+`customer_id` is an integer column; `'abc'` can't become one. Postgres and
+SQL Server both try to convert the string to match the column and fail
+loudly when it can't be done. SQLite tries the same conversion, fails
+silently, and just treats the comparison as false for every row — MySQL's
+default (non-strict) comparison behavior does the same. No error, no
+warning, an empty result set that looks exactly like "no customer 'abc'
+exists" instead of "this comparison never should have run."
+
+## Why a numeric-looking string is more dangerous, not less
+
+A string that *does* parse as a number makes this worse, not better,
+because it works — right up until it doesn't:
+
+<SqlRunner query={`SELECT * FROM customers WHERE customer_id = '1';`} />
+
+`'1'` converts cleanly to `1` and matches the row, on every engine here
+including Postgres and SQL Server (a numeric-looking literal converts
+without complaint). So a query built by concatenating a string ID into a
+filter can work correctly for months, on every engine, until it receives
+input that isn't numeric — at which point Postgres/SQL Server tell you
+immediately, and MySQL/SQLite just quietly return zero rows.
+
+## Where this actually shows up
+
+Almost always an ID coming from somewhere that doesn't guarantee its
+type — a URL path parameter, a form field, a value pulled out of JSON —
+passed straight into a filter without being parsed or validated first.
+The zero-rows result reads as "not found," which is often indistinguishable
+from a real not-found case in application code, so this bug hides behind
+a plausible-looking 404 instead of surfacing as the type error it
+actually is.
+
+## The fix
+
+Validate or explicitly cast the input in application code before it
+reaches the query, rather than relying on the database to catch a type
+mismatch — on two of the four engines here, it won't:
+
+```sql
+-- explicit, and fails the same way on every engine if the cast is bad
+SELECT * FROM customers WHERE customer_id = CAST('abc' AS INTEGER);
+```
+
+(Even this isn't a full fix on SQLite specifically — see
+[CAST / CONVERT failure](/fix/cast-conversion-failure) for why `CAST`
+itself doesn't error there either. The validation has to happen before
+the query, in application code, if the target engine might be SQLite.)
+
+<Related>
+- [Type coercion](/docs/core/type-coercion) — the general rules for how engines convert between types.
+- [CAST / CONVERT failure](/fix/cast-conversion-failure) — what happens when you convert explicitly instead of relying on an implicit comparison.
+</Related>
+
+<TryPlayground>Try `WHERE customer_id = '1.0'` and `WHERE customer_id = ' 1'` (leading space) and see which still match.</TryPlayground>

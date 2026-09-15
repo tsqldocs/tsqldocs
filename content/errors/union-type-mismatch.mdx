@@ -1,0 +1,71 @@
+---
+title: '"UNION types ... cannot be matched"'
+description: The Nth column of one UNION branch is a different type than the Nth column of another. Postgres and SQL Server both refuse to guess how to reconcile them — SQLite just combines them anyway.
+date: "2026-09-15"
+engines: ["PostgreSQL", "SQL Server"]
+tags: ["set-operations"]
+---
+
+- **PostgreSQL:** `ERROR: UNION types integer and text cannot be matched`
+- **SQL Server:** a conversion-failure error naming the specific value it
+  couldn't convert, e.g. `Conversion failed when converting the varchar
+  value 'Acme Corp' to data type int.`
+- **MySQL and SQLite** don't raise an equivalent error for this — see below.
+
+This is the type-mismatch sibling of [UNION column count
+mismatch](/fix/union-column-count-mismatch): that one fires when the
+branches have a different *number* of columns, this one fires when they
+have the same number of columns but the type doesn't line up position by
+position.
+
+The first branch's single column is `customer_id` (integer); the second
+branch's is `name` (text). On Postgres and SQL Server, that's a hard
+error before the query runs at all.
+
+## What SQLite (and MySQL) actually do instead
+
+Both just combine the results into one column with no complaint,
+whatever the underlying types are — this is the same query, running live
+against the SQLite engine behind this playground:
+
+<SqlRunner query={`SELECT customer_id FROM customers
+UNION
+SELECT name FROM customers;`} />
+
+No error — a single mixed column: the integer IDs from the first branch,
+and the customer names, as text, from the second, stacked together with
+no type distinction between them. If your application code assumes every
+value in that column is a number because the first branch's column was,
+the string rows will break it downstream with no warning that they were
+ever produced.
+
+## Why this only matters for `UNION`, not `UNION ALL`
+
+The type reconciliation issue is identical either way, but `UNION`
+(deduplicating) additionally has to decide whether two values from
+different branches count as "the same row" for dedup purposes — on
+engines that allow the mismatch through, a numeric `1` from one branch
+and a text `'1'` from another may or may not be treated as duplicates,
+adding a second layer of ambiguity on top of the type mismatch itself.
+
+## The fix
+
+Cast every branch's columns to an explicit, shared type — don't rely on
+the engine (or, worse, silence) to tell you the branches don't line up:
+
+<SqlRunner query={`SELECT CAST(customer_id AS TEXT) AS id_or_name FROM customers
+UNION
+SELECT name FROM customers;`} />
+
+Explicit casting also documents *what* the combined column actually
+means — here, "an identifier that's sometimes a customer ID and
+sometimes a name" is a strange thing for a column to be, which is often
+the real signal that the two branches shouldn't be unioned together at
+all.
+
+<Related>
+- [UNION column count mismatch](/fix/union-column-count-mismatch) — the same idea, one level up, when the column counts don't even match.
+- [Type coercion](/docs/core/type-coercion) — general rules for how engines reconcile mismatched types.
+</Related>
+
+<TryPlayground>Try `UNION ALL` instead of `UNION` above and check whether the result changes.</TryPlayground>
