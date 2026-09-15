@@ -52,6 +52,10 @@ ORDER BY c.customer_id;`} />
 Same filter, same join — but now it's part of *which rows match*, not *which
 rows survive*, so customers 6 and 7 stay with `NULL` order columns.
 
+<HitThisError>
+- [Ambiguous column name](/fix/ambiguous-column-name)
+</HitThisError>
+
 <Related>
 - [WHERE](/docs/core/where) — the full explanation of NULL-in-WHERE and the ON-vs-WHERE distinction.
 - [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — LEFT JOIN … IS NULL as an anti-join.

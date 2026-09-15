@@ -64,6 +64,10 @@ GROUP BY ROLLUP (customer_id, status);
 `CUBE` adds subtotals for every combination; `GROUPING SETS` lets you specify
 exactly which subtotal levels you want.
 
+<HitThisError>
+- [column must appear in the GROUP BY clause](/fix/group-by-column-must-appear)
+</HitThisError>
+
 <Related>
 - [HAVING](/docs/core/having) — filtering the groups this produces.
 - [DISTINCT](/docs/core/distinct) — a lighter-weight "collapse duplicate rows" when you don't need an aggregate.

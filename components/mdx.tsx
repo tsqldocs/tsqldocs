@@ -2,7 +2,7 @@ import defaultMdxComponents from 'fumadocs-ui/mdx';
 import type { MDXComponents } from 'mdx/types';
 import { SqlRunner } from './sql-runner';
 import CodeBlock from './code-block';
-import { Parameters, Param, Related, TryPlayground } from './doc-widgets';
+import { Parameters, Param, Related, TryPlayground, HitThisError } from './doc-widgets';
 import { QueryDoctor } from './query-doctor';
 
 export function getMDXComponents(components?: MDXComponents) {
@@ -15,6 +15,7 @@ export function getMDXComponents(components?: MDXComponents) {
     Param,
     Related,
     TryPlayground,
+    HitThisError,
     ...components,
   } satisfies MDXComponents;
 }

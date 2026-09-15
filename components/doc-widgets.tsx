@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { FlaskConicalIcon } from 'lucide-react';
+import { FlaskConicalIcon, StethoscopeIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 /* --------------------------------------------------------------------- *
@@ -73,6 +73,30 @@ export function Param({
       </td>
       <td className="px-3 py-2 text-fd-muted-foreground">{children}</td>
     </tr>
+  );
+}
+
+/* --------------------------------------------------------------------- *
+ * <HitThisError> — points at the specific /fix/* page(s) for an error this
+ * clause commonly produces. Same wrap-a-markdown-list shape as <Related>,
+ * styled distinctly so it reads as "here's the exact error text" rather
+ * than general further reading:
+ *
+ *   <HitThisError>
+ *   - [column must appear in the GROUP BY clause](/fix/group-by-column-must-appear)
+ *   </HitThisError>
+ * --------------------------------------------------------------------- */
+export function HitThisError({ children }: { children?: ReactNode }) {
+  return (
+    <div className="not-prose my-6 rounded-lg border border-fd-border bg-fd-card p-4 text-sm">
+      <p className="mb-2 flex items-center gap-2 font-medium text-fd-foreground">
+        <StethoscopeIcon className="size-4 text-fd-primary" />
+        Hit this as an actual error?
+      </p>
+      <div className="[&_a:hover]:underline [&_a]:font-medium [&_a]:text-fd-primary [&_li]:relative [&_li]:pl-4 [&_li]:before:absolute [&_li]:before:left-0 [&_li]:before:text-fd-primary [&_li]:before:content-['–'] [&_ul]:m-0 [&_ul]:list-none [&_ul]:space-y-1.5 [&_ul]:p-0">
+        {children}
+      </div>
+    </div>
   );
 }
 

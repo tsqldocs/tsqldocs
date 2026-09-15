@@ -47,6 +47,10 @@ Row-level conditions belong in `WHERE`.
 - **Non-aggregated columns** in `HAVING` must be in `GROUP BY`, just like the
   select list.
 
+<HitThisError>
+- [column must appear in the GROUP BY clause](/fix/group-by-column-must-appear)
+</HitThisError>
+
 <Related>
 - [GROUP BY](/docs/core/group-by) — sets the groups HAVING filters.
 - [WHERE](/docs/core/where) — the row-level filter that runs first.

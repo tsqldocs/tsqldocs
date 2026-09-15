@@ -54,6 +54,10 @@ WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id AND o.a
 - **A [CTE](/docs/core/cte) is the same thing, named.** Reach for one when a
   subquery is reused or the nesting gets hard to read.
 
+<HitThisError>
+- [Subquery returns more than one row](/fix/subquery-returns-more-than-one-row)
+</HitThisError>
+
 <Related>
 - [CTE (WITH)](/docs/core/cte) — subqueries lifted out and named.
 - [WHERE](/docs/core/where) — where IN / EXISTS / scalar comparisons live.

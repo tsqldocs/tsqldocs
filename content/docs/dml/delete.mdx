@@ -81,6 +81,11 @@ behavior before relying on being able to undo it.
   twice — the row is just gone after the first match — but it's a sign the
   join key isn't unique, worth checking regardless.
 
+<HitThisError>
+- [Foreign key constraint fails](/fix/foreign-key-constraint-fails)
+- ["near "TRUNCATE": syntax error"](/fix/truncate-table-not-supported)
+</HitThisError>
+
 <Related>
 - [UPDATE](/docs/dml/update) — the same "no WHERE" risk, but recoverable if you catch it.
 - [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — the anti-join patterns behind a subquery DELETE.

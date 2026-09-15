@@ -109,6 +109,10 @@ is about `NULL` semantics and readability, not speed. The one firm rule:
 - **`IN` with a very large subquery result** can be slower than `EXISTS` on
   some engines that materialize the list; test if the set is big.
 
+<HitThisError>
+- [Subquery returns more than one row](/fix/subquery-returns-more-than-one-row)
+</HitThisError>
+
 <Related>
 - [NULL handling](/docs/core/nulls) — the three-valued logic that makes `NOT IN` behave this way.
 - [Subqueries](/docs/core/subqueries) — correlated vs. uncorrelated, which `EXISTS` and `IN` are built on.

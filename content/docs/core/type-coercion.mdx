@@ -80,6 +80,12 @@ match on an engine where the column is a real integer or boolean type.
 - **`=` vs `IS`** — some engines (Postgres) distinguish boolean comparison
   operators; `IS TRUE` / `IS NOT TRUE` are NULL-safe where `= TRUE` isn't.
 
+<HitThisError>
+- [Integer division returns 0 (or truncates)](/fix/integer-division-returns-zero)
+- [Division by zero](/fix/division-by-zero)
+- [CAST / CONVERT failure](/fix/cast-conversion-failure)
+</HitThisError>
+
 <Related>
 - [MIN / MAX](/docs/functions/min-max) — the text-sort gotcha in the context of an aggregate.
 - [WHERE](/docs/core/where) — how a coerced comparison interacts with three-valued logic.

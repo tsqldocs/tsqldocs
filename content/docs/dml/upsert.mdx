@@ -150,6 +150,11 @@ INSERT ...` pattern or wrap `MERGE` in `HOLDLOCK`.
   simultaneous upserts on a brand-new key can still race depending on
   isolation level — see [Isolation levels](/docs/transactions/isolation-levels).
 
+<HitThisError>
+- [Duplicate key / unique constraint violation](/fix/duplicate-key-unique-violation)
+- ["ON CONFLICT clause does not match any... constraint"](/fix/on-conflict-no-unique-constraint)
+</HitThisError>
+
 <Related>
 - [INSERT](/docs/dml/insert) — the plain insert this builds on.
 - [UPDATE](/docs/dml/update) — the update path an upsert can take.

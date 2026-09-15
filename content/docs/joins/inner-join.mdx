@@ -51,6 +51,10 @@ one row per order — but if you then `SUM()` a customer-level column without
 grouping, you'll silently multiply it. Always check the row count against what
 you expect before trusting a join's aggregate.
 
+<HitThisError>
+- [Ambiguous column name](/fix/ambiguous-column-name)
+</HitThisError>
+
 <Related>
 - [LEFT JOIN](/docs/joins/left-join) — keep unmatched left rows instead of dropping them.
 - [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — the opposite question: what INNER JOIN drops.

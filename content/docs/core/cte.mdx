@@ -72,6 +72,10 @@ Every recursive CTE needs a stop condition (`WHERE n < 6`) or it runs forever.
 - **Scope.** A CTE is visible only to the statement it's attached to.
 - **`RECURSIVE` keyword** is required in Postgres/SQLite/MySQL; SQL Server omits it.
 
+<HitThisError>
+- ["column does not exist" / "no such column"](/fix/column-does-not-exist)
+</HitThisError>
+
 <Related>
 - [Subqueries](/docs/core/subqueries) — the un-named version.
 - [Gaps and islands](/docs/recipes/gaps-and-islands) — CTEs make these readable.

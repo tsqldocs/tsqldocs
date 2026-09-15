@@ -56,6 +56,11 @@ clearer; see [rows missing in another table](/docs/recipes/rows-missing-in-anoth
 - **Not all engines have `INTERSECT`/`EXCEPT`** (older MySQL). Emulate with
   `IN` / `NOT EXISTS`.
 
+<HitThisError>
+- [UNION: queries must have the same number of columns](/fix/union-column-count-mismatch)
+- [UNION types ... cannot be matched](/fix/union-type-mismatch)
+</HitThisError>
+
 <Related>
 - [CTE (WITH)](/docs/core/cte) — recursive CTEs are built on `UNION ALL`.
 - [DISTINCT](/docs/core/distinct) — the same dedup `UNION` does, on one query.

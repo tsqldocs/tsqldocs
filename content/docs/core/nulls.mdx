@@ -60,6 +60,11 @@ is preferred because it's portable and takes any number of arguments.
 - aggregates (`SUM`, `AVG`, `COUNT(column)`) skip `NULL`s rather than treating them as zero
 - reporting output looks inconsistent if nullable values aren't normalized at a boundary
 
+<HitThisError>
+- [NOT NULL constraint failed](/fix/not-null-constraint-failed)
+- [Division by zero](/fix/division-by-zero)
+</HitThisError>
+
 <Related>
 - [WHERE](/docs/core/where) — the ON-vs-WHERE and LEFT JOIN interactions with NULL.
 - [COALESCE](/docs/functions/coalesce) — the fallback-value function in depth.

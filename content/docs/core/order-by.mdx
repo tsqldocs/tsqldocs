@@ -64,6 +64,10 @@ If the query is used for pagination or ranking, verify that the ordering is
 deterministic enough to support repeated results and audits — and that a NULL
 in the sort column doesn't put a row somewhere unexpected.
 
+<HitThisError>
+- [ORDER BY position ... is not in select list](/fix/order-by-position-out-of-range)
+</HitThisError>
+
 <Related>
 - [NULL handling](/docs/core/nulls) — the three-valued logic behind why NULL needs a rule at all.
 - [LIMIT / OFFSET](/docs/core/limit) — LIMIT is only meaningful over a deterministic ORDER BY.
