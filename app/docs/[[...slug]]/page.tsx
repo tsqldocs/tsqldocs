@@ -15,7 +15,7 @@ import { MessageCircleIcon } from 'lucide-react';
 import { AISearchTrigger } from '@/components/ai/search';
 import { ReportIssueLink } from '@/components/report-issue-link';
 import { WasThisHelpful } from '@/components/was-this-helpful';
-import { gitConfig } from '@/lib/shared';
+import { gitConfig, siteUrl } from '@/lib/shared';
 
 export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const params = await props.params;
@@ -71,6 +71,7 @@ export async function generateMetadata(props: PageProps<'/docs/[[...slug]]'>): P
   return {
     title: page.data.title,
     description: page.data.description,
+    alternates: { canonical: `${siteUrl}${page.url}` },
     openGraph: {
       images: getPageImageUrl(page).url,
     },
