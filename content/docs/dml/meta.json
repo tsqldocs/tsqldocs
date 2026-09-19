@@ -1,4 +1,4 @@
 {
   "title": "Writing data",
-  "pages": ["insert", "update", "delete", "upsert"]
+  "pages": ["insert", "update", "delete", "upsert", "output-clause"]
 }

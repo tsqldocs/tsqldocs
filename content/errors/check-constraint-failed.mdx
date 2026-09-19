@@ -2,14 +2,14 @@
 title: "CHECK constraint failed"
 description: A row you tried to write violates a CHECK constraint's rule — the constraint is doing exactly what it was declared to do. The fix is deciding whether the data or the rule is wrong.
 date: "2026-09-13"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["constraints", "dml"]
 ---
 
+- **SQL Server:** `The INSERT statement conflicted with the CHECK constraint "CK_orders_amount". The conflict occurred in database "...", table "dbo.orders", column 'amount'.`
 - **SQLite:** `CHECK constraint failed: amount >= 0`
 - **PostgreSQL:** `ERROR: new row for relation "orders" violates check constraint "orders_amount_check" DETAIL: Failing row contains (1, -50, ...).`
 - **MySQL** (8.0.16+; earlier versions silently ignore `CHECK`): `Check constraint 'orders_chk_1' is violated.`
-- **SQL Server:** `The INSERT statement conflicted with the CHECK constraint "CK_orders_amount". The conflict occurred in database "...", table "dbo.orders", column 'amount'.`
 
 <SqlRunner query={`DROP TABLE IF EXISTS scratch_orders;
 CREATE TABLE scratch_orders (

@@ -62,4 +62,5 @@ WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id AND o.a
 - [CTE (WITH)](/docs/core/cte) — subqueries lifted out and named.
 - [WHERE](/docs/core/where) — where IN / EXISTS / scalar comparisons live.
 - [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — the anti-join patterns.
+- [APPLY](/docs/joins/apply) — T-SQL's way to correlate a subquery with the left row directly, no JOIN condition needed.
 </Related>

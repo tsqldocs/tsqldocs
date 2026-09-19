@@ -5,7 +5,7 @@ import { gitConfig } from '@/lib/shared';
 export const metadata: Metadata = {
   title: 'About',
   description:
-    'What tsqldocs is, how the examples are tested, and how to report an error or request a page.',
+    'What tsqldocs is, how the T-SQL examples are tested, and how to report an error or request a page.',
 };
 
 const repoUrl = `https://github.com/${gitConfig.user}/${gitConfig.repo}`;
@@ -16,18 +16,24 @@ export default function AboutPage() {
       <article className="prose">
         <h1>About tsqldocs</h1>
         <p>
-          tsqldocs is a practical SQL reference: the clauses, functions, joins, window
-          functions, data-writing statements, transactions, and performance topics that
-          shape real queries — plus copy-paste recipes, a browser SQL playground, and an AI
-          assistant that answers from these pages.
+          tsqldocs is a practical T-SQL (SQL Server) reference: the clauses, functions,
+          joins, window functions, data-writing statements, transactions, and performance
+          topics that shape real queries — with PostgreSQL, MySQL, and SQLite compared
+          alongside wherever they diverge from T-SQL — plus copy-paste recipes, a browser
+          SQL playground, and an AI assistant that answers from these pages.
         </p>
 
         <h2>How it&rsquo;s built</h2>
         <ul>
           <li>
-            <strong>Every example is runnable.</strong> The green &ldquo;SQL playground&rdquo;
-            blocks execute against a real SQLite database (compiled to WebAssembly) in your
-            browser, seeded with a small fixed sample schema.
+            <strong>Every example is runnable, where that&rsquo;s honest.</strong> The green
+            &ldquo;SQL playground&rdquo; blocks execute against a real SQLite database
+            (compiled to WebAssembly) in your browser, seeded with a small fixed sample
+            schema. SQLite covers the portable core of T-SQL — clauses, joins, aggregates,
+            window functions — that behaves the same way on SQL Server. Syntax that&rsquo;s
+            genuinely SQL-Server-only (<code>TOP</code>, <code>CROSS APPLY</code>,{' '}
+            <code>MERGE</code>, <code>OUTPUT</code>, <code>TRY/CATCH</code>) can&rsquo;t run
+            there and is shown as static reference code instead, clearly marked.
           </li>
           <li>
             <strong>Examples are tested before they ship.</strong> Each runnable query is
@@ -41,8 +47,8 @@ export default function AboutPage() {
             section, not a footnote.
           </li>
           <li>
-            <strong>Dialect differences are called out.</strong> Where PostgreSQL, MySQL, and
-            SQL Server diverge from the standard or from each other, the page says so.
+            <strong>T-SQL is the throughline.</strong> Where PostgreSQL, MySQL, or SQLite
+            diverge from SQL Server or from each other, the page says so.
           </li>
         </ul>
 

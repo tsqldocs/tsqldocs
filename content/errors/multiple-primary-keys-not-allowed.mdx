@@ -2,14 +2,14 @@
 title: '"Multiple primary keys for table are not allowed"'
 description: You marked two separate columns PRIMARY KEY on the same table. A table can only have one primary key — if you meant both columns together should be unique, that's a composite key, different syntax.
 date: "2026-09-15"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["ddl", "constraints"]
 ---
 
+- **SQL Server:** `Multiple primary keys cannot be created on table 'order_items'.`
 - **SQLite:** `table "order_items" has more than one primary key`
 - **PostgreSQL:** `ERROR: multiple primary keys for table "order_items" are not allowed`
 - **MySQL:** `Multiple primary key defined`
-- **SQL Server:** `Multiple primary keys cannot be created on table 'order_items'.`
 
 <SqlRunner query={`DROP TABLE IF EXISTS scratch_order_items;
 CREATE TABLE scratch_order_items (

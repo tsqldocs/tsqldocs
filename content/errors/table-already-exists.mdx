@@ -2,14 +2,14 @@
 title: '"relation already exists" / "Table already exists"'
 description: A CREATE TABLE ran against a name the database already has. Usually a re-run script, sometimes a genuine naming collision — IF NOT EXISTS fixes the first, not the second.
 date: "2026-09-14"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["troubleshooting", "ddl"]
 ---
 
+- **SQL Server:** `There is already an object named 'customers' in the database.`
 - **SQLite:** `table customers already exists`
 - **PostgreSQL:** `ERROR: relation "customers" already exists`
 - **MySQL:** `Table 'customers' already exists`
-- **SQL Server:** `There is already an object named 'customers' in the database.`
 
 <SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
 CREATE TABLE scratch_customers (customer_id INTEGER PRIMARY KEY, name TEXT);
@@ -29,8 +29,14 @@ the script safe to re-run, not chasing the error each time:
 SELECT 'no error' AS result;`} />
 
 `IF NOT EXISTS` makes the statement a no-op when the table is already
-there instead of erroring — every engine on this page supports it with
-this exact syntax.
+there instead of erroring — PostgreSQL, MySQL, and SQLite all support it
+with this exact syntax. **SQL Server doesn't** — `CREATE TABLE IF NOT
+EXISTS` isn't valid T-SQL at all. Guard it explicitly instead:
+
+```sql
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'customers')
+CREATE TABLE customers (customer_id INT PRIMARY KEY, name NVARCHAR(100));
+```
 
 **Two different things actually needed two different names**, and they
 collided by coincidence — a genuinely new table happened to be named the
@@ -47,7 +53,7 @@ already has unexpected data or a different shape, that's the second
 case, not the first:
 
 ```sql
--- PostgreSQL / MySQL
+-- SQL Server / PostgreSQL / MySQL
 SELECT column_name, data_type FROM information_schema.columns
 WHERE table_name = 'customers';
 

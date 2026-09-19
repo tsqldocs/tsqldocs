@@ -2,12 +2,12 @@
 title: "CAST / CONVERT failure — invalid value for type"
 description: You tried to convert a value into a type it doesn't actually fit — text that isn't a number, a number that overflows, a string that isn't a date. Most engines reject it outright; SQLite quietly does its best guess instead.
 date: "2026-09-14"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["type-coercion"]
 ---
 
-- **PostgreSQL:** `ERROR: invalid input syntax for type integer: "abc"`
 - **SQL Server:** `Conversion failed when converting the varchar value 'abc' to data type int.`
+- **PostgreSQL:** `ERROR: invalid input syntax for type integer: "abc"`
 - **MySQL** (strict mode): `ERROR 1366 (HY000): Incorrect integer value: 'abc' for column ...` —
   outside strict mode, MySQL converts to `0` with a warning instead of an error.
 - **SQLite:** no error at all — see below.

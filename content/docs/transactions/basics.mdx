@@ -128,6 +128,7 @@ for you.
 - [Isolation levels](/docs/transactions/isolation-levels) — what a transaction can see of another one running concurrently.
 - [UPDATE](/docs/dml/update) — the "no WHERE" risk a transaction makes recoverable: `BEGIN`, run it, check the result, `COMMIT` or `ROLLBACK`.
 - [DELETE](/docs/dml/delete) — same safety pattern; a transaction is the practical version of "run the SELECT first."
+- [TRY / CATCH](/docs/transactions/try-catch) — T-SQL's structured way to catch a failed statement and decide how to roll back.
 </Related>
 
 ## Safety checklist

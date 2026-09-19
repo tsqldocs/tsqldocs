@@ -13,7 +13,7 @@ export function Logo({ className = '' }: { className?: string }) {
         <span className="size-[7px] rounded-[2px] border border-fd-foreground/35" />
         <span className="size-[7px] rounded-[2px] bg-fd-primary" />
       </span>
-      <span className="font-semibold tracking-tight">SQL Docs</span>
+      <span className="font-semibold tracking-tight">T-SQL Docs</span>
     </span>
   );
 }

@@ -2,12 +2,12 @@
 title: '"ORDER BY position ... is not in select list"'
 description: You sorted (or grouped) by a column number that doesn't exist in the SELECT list — usually because a column got added or removed and a positional reference further down wasn't updated.
 date: "2026-09-15"
-engines: ["PostgreSQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "SQLite"]
 tags: ["troubleshooting"]
 ---
 
-- **PostgreSQL:** `ERROR: ORDER BY position 5 is not in select list`
 - **SQL Server:** `The ORDER BY position number 5 is out of range in the select list which is only 2 items.`
+- **PostgreSQL:** `ERROR: ORDER BY position 5 is not in select list`
 - **SQLite:** `1st ORDER BY term out of range - should be between 1 and 2`
 - **MySQL** raises an equivalent "unknown column" style error for the same
   mistake — the exact wording varies by version, but the cause and fix

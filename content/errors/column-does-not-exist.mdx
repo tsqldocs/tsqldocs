@@ -2,14 +2,14 @@
 title: '"column does not exist" / "no such column"'
 description: The column name in your query doesn't match the table's actual columns — a typo, a stale schema assumption, or a column you meant to reach through a join you didn't write.
 date: "2026-09-13"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["troubleshooting"]
 ---
 
+- **SQL Server:** `Invalid column name 'customre_id'.`
 - **SQLite:** `no such column: customre_id`
 - **PostgreSQL:** `ERROR: column "customre_id" does not exist`
 - **MySQL:** `Unknown column 'customre_id' in 'field list'`
-- **SQL Server:** `Invalid column name 'customre_id'.`
 
 <SqlRunner query={`SELECT customre_id FROM customers;`} />
 

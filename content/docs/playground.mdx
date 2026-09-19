@@ -7,6 +7,14 @@ full: true
 Every query below runs entirely in your browser (SQLite compiled to WebAssembly) —
 nothing is sent anywhere. Edit the SQL and press **Run** (or `⌘/Ctrl + Enter`).
 
+This site is a T-SQL (SQL Server) reference, and SQLite is a deliberate choice for
+the sandbox, not a compromise: it covers the portable core T-SQL shares with every
+other engine — clauses, joins, aggregates, window functions — with zero setup and
+nothing sent to a server. Syntax that's genuinely SQL Server-only (`TOP`,
+`CROSS`/`OUTER APPLY`, `MERGE`, `OUTPUT`, `TRY`/`CATCH`, table variables) can't run
+here — those pages show it as static reference code instead, clearly marked, rather
+than pretending it's runnable in this sandbox.
+
 <SqlRunner />
 
 ## Aggregation and grain

@@ -6,14 +6,17 @@ engines: ["PostgreSQL", "SQLite"]
 tags: ["dml", "constraints"]
 ---
 
+**T-SQL note:** this specific error doesn't have a direct SQL Server
+equivalent — `MERGE` doesn't name an explicit conflict target the way
+`ON CONFLICT` does, so there's no matching failure mode to quote. It's
+specific to Postgres and SQLite's `ON CONFLICT` syntax:
+
 - **PostgreSQL:** `ERROR: there is no unique or exclusion constraint matching the ON CONFLICT specification`
 - **SQLite:** `ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint`
 
-This is specific to Postgres and SQLite's `ON CONFLICT` upsert syntax —
-MySQL's `ON DUPLICATE KEY UPDATE` and SQL Server's `MERGE` don't name an
-explicit conflict target the same way, so they don't have a direct
-equivalent of this particular error. See [UPSERT](/docs/dml/upsert) for
-how each engine's syntax actually differs.
+MySQL's `ON DUPLICATE KEY UPDATE` doesn't have a matching error either,
+for the same reason. See [UPSERT](/docs/dml/upsert) for how T-SQL's
+`MERGE` and each other engine's syntax actually differs.
 
 <SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
 CREATE TABLE scratch_customers (

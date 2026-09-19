@@ -2,14 +2,14 @@
 title: '"no such table" / relation does not exist'
 description: The table name in your query doesn't match what the database actually has — usually a typo, the wrong schema, or a case-sensitivity trap. Here's how to find out which.
 date: "2026-09-13"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["troubleshooting"]
 ---
 
+- **SQL Server:** `Invalid object name 'custmers'.`
 - **SQLite:** `no such table: custmers`
 - **PostgreSQL:** `ERROR: relation "custmers" does not exist`
 - **MySQL:** `Table 'mydb.custmers' doesn't exist`
-- **SQL Server:** `Invalid object name 'custmers'.`
 
 <SqlRunner query={`SELECT * FROM custmers;`} />
 

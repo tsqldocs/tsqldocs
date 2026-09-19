@@ -2,14 +2,14 @@
 title: '"Duplicate column name" (ALTER TABLE ADD COLUMN)'
 description: You tried to add a column with a name the table already has. Usually a re-run migration — sometimes a sign the column was never actually missing in the first place.
 date: "2026-09-14"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["troubleshooting", "ddl"]
 ---
 
+- **SQL Server:** `Column names in each table must be unique. Column name 'country' in table 'customers' is specified more than once.`
 - **SQLite:** `duplicate column name: country`
 - **PostgreSQL:** `ERROR: column "country" of relation "customers" already exists`
 - **MySQL:** `Duplicate column name 'country'`
-- **SQL Server:** `Column names in each table must be unique. Column name 'country' in table 'customers' is specified more than once.`
 
 <SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
 CREATE TABLE scratch_customers (customer_id INTEGER PRIMARY KEY, name TEXT, country TEXT);
@@ -31,9 +31,6 @@ by accident.
 Unlike `CREATE TABLE IF NOT EXISTS`, support for the equivalent on
 `ALTER TABLE ADD COLUMN` **isn't universal** — check before relying on it:
 
-- **PostgreSQL** (9.6+): supports it directly —
-  `ALTER TABLE customers ADD COLUMN IF NOT EXISTS country TEXT;`
-- **MySQL** (8.0.29+): supports it directly, same syntax.
 - **SQL Server**: no `IF NOT EXISTS` on `ADD COLUMN` — guard it explicitly
   instead:
   ```sql
@@ -43,6 +40,9 @@ Unlike `CREATE TABLE IF NOT EXISTS`, support for the equivalent on
   )
   ALTER TABLE customers ADD country VARCHAR(100);
   ```
+- **PostgreSQL** (9.6+): supports it directly —
+  `ALTER TABLE customers ADD COLUMN IF NOT EXISTS country TEXT;`
+- **MySQL** (8.0.29+): supports it directly, same syntax.
 - **SQLite**: no `IF NOT EXISTS` on `ADD COLUMN` either — same pattern,
   check `PRAGMA table_info` first:
 

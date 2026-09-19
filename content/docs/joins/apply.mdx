@@ -1,0 +1,93 @@
+---
+title: APPLY (CROSS APPLY / OUTER APPLY)
+description: Run a correlated subquery or table-valued function once per row of the left side — a SQL Server–specific join that a regular JOIN's ON clause can't express.
+---
+
+`APPLY` is T-SQL only — there's no `CROSS APPLY`/`OUTER APPLY` in PostgreSQL,
+MySQL, or SQLite. It's SQL Server's answer to a problem a regular `JOIN`
+can't solve: the right side needs to be a query that *references a column
+from the left side* — a `TOP N` per row, or a table-valued function call —
+which a `JOIN ... ON` condition alone can't express, since `ON` only filters
+rows after both sides are already computed independently.
+
+## Syntax
+
+```sql
+SELECT ...
+FROM left_table lt
+CROSS APPLY (subquery or table-valued function, may reference lt.col) a;
+-- or, to keep left rows even when the right side returns nothing:
+FROM left_table lt
+OUTER APPLY (...) a;
+```
+
+`CROSS APPLY` behaves like an `INNER JOIN` — a left row with no matching
+right rows is dropped entirely. `OUTER APPLY` behaves like a `LEFT JOIN` —
+unmatched left rows are kept, with `NULL` for the right side's columns.
+
+## Top N per customer, T-SQL style
+
+This is the single most common reason to reach for `APPLY`: a regular join
+can't limit "3 most recent orders per customer" because `TOP`/`LIMIT`
+inside a plain subquery can't see which customer it's being joined to.
+`CROSS APPLY` fixes that — the subquery is evaluated once per row of
+`c`, with `c.customer_id` in scope:
+
+```sql
+SELECT c.customer_id, c.name, o.order_id, o.order_date, o.amount
+FROM customers c
+CROSS APPLY (
+  SELECT TOP 3 order_id, order_date, amount
+  FROM orders o
+  WHERE o.customer_id = c.customer_id
+  ORDER BY o.order_date DESC
+) o;
+```
+
+Customers with zero orders don't appear at all — `CROSS APPLY` drops them,
+the same way an `INNER JOIN` would. Switch to `OUTER APPLY` to keep every
+customer, with `NULL`s for the ones with no orders:
+
+```sql
+SELECT c.customer_id, c.name, o.order_id, o.amount
+FROM customers c
+OUTER APPLY (
+  SELECT TOP 1 order_id, amount
+  FROM orders o
+  WHERE o.customer_id = c.customer_id
+  ORDER BY o.order_date DESC
+) o;
+```
+
+This site's [Top N per group](/docs/recipes/top-n-per-group) recipe solves
+the same problem with `ROW_NUMBER() OVER (...)` instead, since that
+approach is portable across engines — reach for `APPLY` specifically when
+you're writing T-SQL and the per-row-`TOP` phrasing reads more directly, or
+when the right side needs to be a table-valued function rather than a
+plain `SELECT`.
+
+## Calling a table-valued function per row
+
+The other common use: a system or user-defined table-valued function that
+takes a value from the left row as an argument — something a `JOIN`
+genuinely cannot do, since a join condition can't pass a value *into* a
+function call on the other side:
+
+```sql
+SELECT p.product_id, p.product_name, t.value AS tag
+FROM product_sales p
+CROSS APPLY STRING_SPLIT(p.category_id, ',') t;
+```
+
+## Can't run this in the playground
+
+The sandbox on this site is SQLite, and SQLite has no `APPLY` — the
+examples above are reference code, not something you can paste into the
+playground here. Test T-SQL `APPLY` queries against an actual SQL Server
+instance.
+
+<Related>
+- [Top N per group](/docs/recipes/top-n-per-group) — the portable, cross-engine way to solve the same problem with a window function.
+- [LEFT JOIN](/docs/joins/left-join) — the regular join `OUTER APPLY` is closest to.
+- [Subqueries](/docs/core/subqueries) — correlated subqueries, the concept `APPLY` builds on.
+</Related>

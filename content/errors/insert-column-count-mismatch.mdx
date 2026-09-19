@@ -2,15 +2,15 @@
 title: '"Column count doesn''t match value count"'
 description: The number of values in your INSERT doesn't match the number of columns — either the column list, or a row in a multi-row VALUES list, is short or long by one.
 date: "2026-09-15"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["dml"]
 ---
 
+- **SQL Server:** `Column name or number of supplied values does not match table definition.`
 - **SQLite:** `3 values for 2 columns`
 - **PostgreSQL:** `ERROR: INSERT has more expressions than target columns`
   (or the reverse: `INSERT has more target columns than expressions`)
 - **MySQL:** `Column count doesn't match value count at row 1`
-- **SQL Server:** `Column name or number of supplied values does not match table definition.`
 
 <SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
 CREATE TABLE scratch_customers (customer_id INTEGER PRIMARY KEY, name TEXT);

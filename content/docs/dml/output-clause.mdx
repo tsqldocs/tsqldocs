@@ -1,0 +1,89 @@
+---
+title: OUTPUT clause
+description: Capture the rows a T-SQL INSERT, UPDATE, or DELETE just changed — without a separate SELECT, and without the race condition a separate SELECT can have.
+---
+
+`OUTPUT` is T-SQL only — PostgreSQL and SQLite have `RETURNING` for the
+insert/delete case (not update-with-old-and-new-values the way `OUTPUT`
+can), and MySQL has neither. `OUTPUT` returns the rows a DML statement just
+affected, straight from the statement itself — no follow-up `SELECT`
+against IDs you have to remember, and no window where another session could
+change the row between your write and your read-back.
+
+## Syntax
+
+```sql
+INSERT INTO t (...) OUTPUT inserted.col, ... VALUES (...);
+UPDATE t SET col = ... OUTPUT deleted.col AS old_value, inserted.col AS new_value WHERE ...;
+DELETE FROM t OUTPUT deleted.* WHERE ...;
+```
+
+Two special, automatically-populated tables are available inside `OUTPUT`:
+`inserted` (the new values — populated for `INSERT` and `UPDATE`) and
+`deleted` (the old values — populated for `UPDATE` and `DELETE`). Which one
+you reference depends on what you're trying to see.
+
+## Get the generated ID back from an INSERT
+
+The most common use — no separate `SELECT SCOPE_IDENTITY()` call needed:
+
+```sql
+INSERT INTO customers (name, country)
+OUTPUT inserted.customer_id, inserted.name
+VALUES ('Globex', 'US');
+```
+
+## See both old and new values from an UPDATE
+
+`UPDATE` is the one place `OUTPUT` does something a `RETURNING`-style
+clause on other engines can't in one statement — `inserted` and `deleted`
+both refer to the *same* logical row, before and after:
+
+```sql
+UPDATE orders
+SET status = 'cancelled'
+OUTPUT deleted.status AS old_status, inserted.status AS new_status, inserted.order_id
+WHERE order_id = 103;
+```
+
+## Capture what a DELETE removed
+
+Useful for an audit trail, or to hand the deleted rows to application code
+without a second round-trip:
+
+```sql
+DELETE FROM orders
+OUTPUT deleted.order_id, deleted.customer_id, deleted.amount
+WHERE cancelled_at IS NOT NULL;
+```
+
+## Send it into a table variable instead of back to the caller
+
+`OUTPUT ... INTO` captures the rows into a table variable for further use
+*within the same batch* — for example, to know exactly which rows a
+follow-up statement should touch:
+
+```sql
+DECLARE @deleted_ids TABLE (order_id INT);
+
+DELETE FROM orders
+OUTPUT deleted.order_id INTO @deleted_ids
+WHERE cancelled_at IS NOT NULL;
+
+-- @deleted_ids now holds exactly the rows that were removed
+SELECT * FROM @deleted_ids;
+```
+
+## Can't run this in the playground
+
+The sandbox on this site is SQLite, which has no `OUTPUT` clause (its
+closest relative, `RETURNING`, only covers the insert/delete case, not
+`UPDATE`'s before-and-after) — the examples above are reference code, not
+something you can paste into the playground here. Test T-SQL `OUTPUT`
+queries against an actual SQL Server instance.
+
+<Related>
+- [INSERT](/docs/dml/insert) — the statement `OUTPUT` is most often attached to.
+- [UPDATE](/docs/dml/update) — where `OUTPUT`'s before-and-after view is unique to T-SQL.
+- [Transactions basics](/docs/transactions/basics) — `OUTPUT` inside a transaction that might still roll back.
+</Related>

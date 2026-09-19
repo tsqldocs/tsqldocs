@@ -6,6 +6,11 @@ engines: ["SQLite"]
 tags: ["troubleshooting", "ddl"]
 ---
 
+**T-SQL note:** if you're targeting SQL Server itself, this one doesn't
+apply to you — real `TRUNCATE TABLE` works fine there. It only comes up
+when the *sandbox* on this site (SQLite) is what you're running against,
+which is worth knowing if you paste a T-SQL script in here to try it out.
+
 Postgres, MySQL, and SQL Server all support `TRUNCATE TABLE` as a fast way
 to empty a table. SQLite doesn't have the statement at all:
 

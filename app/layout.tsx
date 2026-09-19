@@ -20,11 +20,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: `${appName} — practical SQL reference`,
+    default: `${appName} — practical T-SQL reference`,
     template: `%s | ${appName}`,
   },
   description:
-    'A practical SQL reference for analytics and product teams: clauses, functions, joins, window patterns, and the edge cases that break production queries.',
+    'A practical T-SQL (SQL Server) reference for analytics and product teams: clauses, functions, joins, window patterns, and the edge cases that break production queries — with PostgreSQL, MySQL, and SQLite compared alongside where they diverge.',
 };
 
 export default function Layout({ children }: LayoutProps<'/'>) {

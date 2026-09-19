@@ -1,4 +1,4 @@
-export const appName = 'SQL Docs';
+export const appName = 'T-SQL Docs';
 export const siteUrl = 'https://tsqldocs.com';
 export const docsRoute = '/docs';
 export const docsImageRoute = '/og/docs';

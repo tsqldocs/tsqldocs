@@ -2,12 +2,12 @@
 title: '"syntax error at or near" / "Incorrect syntax near"'
 description: A generic parser error that can mean a dozen different things. Here's how to read the pointer and the handful of causes that account for almost every case.
 date: "2026-09-13"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["troubleshooting"]
 ---
 
-- **PostgreSQL:** `ERROR: syntax error at or near "FROM"`
 - **SQL Server:** `Incorrect syntax near 'FROM'.`
+- **PostgreSQL:** `ERROR: syntax error at or near "FROM"`
 - **MySQL:** `You have an error in your SQL syntax; ... check the manual ... for the right syntax to use near 'FROM orders' at line 1`
 - **SQLite:** `near "FROM": syntax error`
 

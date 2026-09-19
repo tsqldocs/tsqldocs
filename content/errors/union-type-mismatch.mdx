@@ -2,14 +2,14 @@
 title: '"UNION types ... cannot be matched"'
 description: The Nth column of one UNION branch is a different type than the Nth column of another. Postgres and SQL Server both refuse to guess how to reconcile them — SQLite just combines them anyway.
 date: "2026-09-15"
-engines: ["PostgreSQL", "SQL Server"]
+engines: ["SQL Server", "PostgreSQL"]
 tags: ["set-operations"]
 ---
 
-- **PostgreSQL:** `ERROR: UNION types integer and text cannot be matched`
 - **SQL Server:** a conversion-failure error naming the specific value it
   couldn't convert, e.g. `Conversion failed when converting the varchar
   value 'Acme Corp' to data type int.`
+- **PostgreSQL:** `ERROR: UNION types integer and text cannot be matched`
 - **MySQL and SQLite** don't raise an equivalent error for this — see below.
 
 This is the type-mismatch sibling of [UNION column count
@@ -19,7 +19,7 @@ have the same number of columns but the type doesn't line up position by
 position.
 
 The first branch's single column is `customer_id` (integer); the second
-branch's is `name` (text). On Postgres and SQL Server, that's a hard
+branch's is `name` (text). On SQL Server and Postgres, that's a hard
 error before the query runs at all.
 
 ## What SQLite (and MySQL) actually do instead

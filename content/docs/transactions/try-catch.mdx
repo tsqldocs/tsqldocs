@@ -1,0 +1,107 @@
+---
+title: TRY / CATCH
+description: T-SQL's structured error handling — catch a statement that fails, inspect exactly what went wrong, and decide whether to roll back, rethrow, or recover.
+---
+
+`TRY`/`CATCH` is T-SQL only. PostgreSQL has `EXCEPTION` blocks inside
+`PL/pgSQL` functions (a different shape, and not available in plain SQL
+scripts), and MySQL/SQLite have nothing directly comparable at the
+statement level. In T-SQL, most errors that would otherwise stop a batch
+outright can instead be caught, inspected, and handled.
+
+## Syntax
+
+```sql
+BEGIN TRY
+  -- statements that might fail
+END TRY
+BEGIN CATCH
+  -- runs only if something in TRY failed
+END CATCH;
+```
+
+Control jumps straight to `CATCH` the moment any statement inside `TRY`
+raises a catchable error — nothing after the failing statement in `TRY`
+runs.
+
+## Inspecting what went wrong
+
+Six functions are only valid inside a `CATCH` block, and describe the
+error that got you there:
+
+```sql
+BEGIN TRY
+  SELECT 1 / 0;
+END TRY
+BEGIN CATCH
+  SELECT
+    ERROR_NUMBER()    AS error_number,
+    ERROR_MESSAGE()   AS error_message,
+    ERROR_LINE()      AS error_line,
+    ERROR_SEVERITY()  AS error_severity,
+    ERROR_STATE()     AS error_state,
+    ERROR_PROCEDURE() AS error_procedure;
+END CATCH;
+```
+
+## Rolling back a transaction correctly
+
+The pattern that matters most: check `XACT_STATE()` before deciding how to
+roll back, because an error can leave a transaction in one of two
+different states — recoverable, or already doomed:
+
+```sql
+BEGIN TRY
+  BEGIN TRANSACTION;
+
+  UPDATE accounts SET balance = balance - 100 WHERE account_id = 1;
+  UPDATE accounts SET balance = balance + 100 WHERE account_id = 2;
+
+  COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+  IF XACT_STATE() <> 0
+    ROLLBACK TRANSACTION;
+
+  THROW;
+END CATCH;
+```
+
+- `XACT_STATE() = 1` — the transaction is still committable; only the last
+  statement failed. `ROLLBACK` is a choice here, not a requirement.
+- `XACT_STATE() = -1` — the transaction has been marked uncommittable by a
+  serious error; `ROLLBACK` is the only valid next step. Trying to
+  `COMMIT` here raises another error.
+- `XACT_STATE() = 0` — there is no open transaction at all; `ROLLBACK`
+  would itself error.
+
+Checking `XACT_STATE() <> 0` before rolling back covers both the `1` and
+`-1` cases without needing to tell them apart, and avoids erroring on a
+`ROLLBACK` with nothing open.
+
+## THROW: rethrow, or raise a new error
+
+`THROW` with no arguments (as above) rethrows the original error exactly
+as caught, including the original error number and message — the
+standard way to log or clean up in `CATCH` and still let the failure
+propagate to the caller. `THROW` with arguments raises a new custom error
+instead:
+
+```sql
+THROW 51000, 'Insufficient balance for this transfer.', 1;
+```
+
+`RAISERROR` is the older, pre-2012 way to do the same thing — `THROW` is
+the current form and the one to reach for in new code.
+
+## Can't run this in the playground
+
+The sandbox on this site is SQLite, which has no `TRY`/`CATCH` or
+`XACT_STATE()` — the examples above are reference code, not something you
+can paste into the playground here. Test T-SQL error handling against an
+actual SQL Server instance.
+
+<Related>
+- [Transactions basics](/docs/transactions/basics) — BEGIN/COMMIT/ROLLBACK, what TRY/CATCH is usually wrapping.
+- [Isolation levels](/docs/transactions/isolation-levels) — the other half of writing transactions that behave correctly under concurrency.
+</Related>

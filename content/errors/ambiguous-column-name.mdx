@@ -2,16 +2,16 @@
 title: "Ambiguous column name"
 description: Two joined tables both have a column with this name, and you referenced it without saying which table. Every engine refuses to guess — here's how to fix it and avoid it next time.
 date: "2026-09-13"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["joins"]
 ---
 
 Same problem, different wording per engine:
 
+- **SQL Server:** `Ambiguous column name 'customer_id'.`
 - **SQLite:** `ambiguous column name: customer_id`
 - **PostgreSQL:** `ERROR: column reference "customer_id" is ambiguous`
 - **MySQL:** `Column 'customer_id' in field list is ambiguous`
-- **SQL Server:** `Ambiguous column name 'customer_id'.`
 
 Try it — `customers` and `orders` both have a `customer_id` column, and this
 query doesn't say which one it means:

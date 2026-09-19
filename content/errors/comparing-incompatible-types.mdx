@@ -2,17 +2,17 @@
 title: "Comparing a number to text silently matches nothing"
 description: A numeric column compared to a non-numeric string doesn't always error — on some engines it just quietly returns no rows, no warning, no hint that the comparison itself was the problem.
 date: "2026-09-15"
-engines: ["PostgreSQL", "SQL Server", "MySQL", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["type-coercion"]
 ---
 
 This one splits engines into two camps, and the split isn't the usual
 "SQLite is the outlier" — MySQL is on SQLite's side of this one.
 
-**Postgres and SQL Server reject it outright:**
+**SQL Server and Postgres reject it outright:**
 
-- **PostgreSQL:** `ERROR: invalid input syntax for type integer: "abc"`
 - **SQL Server:** `Conversion failed when converting the varchar value 'abc' to data type int.`
+- **PostgreSQL:** `ERROR: invalid input syntax for type integer: "abc"`
 
 **MySQL and SQLite let it through — and just return nothing:**
 

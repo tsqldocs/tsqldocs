@@ -4,9 +4,9 @@ import { ArrowRightIcon } from 'lucide-react';
 import { highlight } from 'fumadocs-core/highlight';
 
 export const metadata: Metadata = {
-  title: 'SQL dialect comparison',
+  title: 'T-SQL vs. Postgres, MySQL, SQLite',
   description:
-    'The same ~16 common operations shown side by side across PostgreSQL, MySQL, SQL Server, and SQLite — organized by engine instead of by topic.',
+    'T-SQL (SQL Server) syntax for ~16 common operations, compared against PostgreSQL, MySQL, and SQLite — organized by engine instead of by topic.',
 };
 
 async function Code({ code }: { code: string }) {
@@ -32,22 +32,22 @@ const items: Item[] = [
   {
     title: 'Limit rows',
     href: '/docs/core/limit',
-    note: 'SQL Server\'s TOP goes right after SELECT, not at the end.',
+    note: 'TOP goes right after SELECT, not at the end — and needs ORDER BY to be meaningful.',
     rows: [
+      { engine: 'SQL Server', code: 'SELECT TOP 20 * FROM t ORDER BY ... OFFSET 40 ROWS' },
       { engine: 'PostgreSQL', code: 'LIMIT 20 OFFSET 40' },
       { engine: 'MySQL', code: 'LIMIT 40, 20' },
-      { engine: 'SQL Server', code: 'SELECT TOP 20 * FROM t ORDER BY ... OFFSET 40 ROWS' },
       { engine: 'SQLite', code: 'LIMIT 20 OFFSET 40' },
     ],
   },
   {
     title: 'String concatenation',
     href: '/docs/functions/strings',
-    note: '|| is standard SQL; MySQL reads it as logical OR by default, so use CONCAT there.',
+    note: 'T-SQL uses + (or CONCAT); MySQL reads || as logical OR by default unless PIPES_AS_CONCAT is set.',
     rows: [
+      { engine: 'SQL Server', code: "a + b   -- or CONCAT(a, b)" },
       { engine: 'PostgreSQL', code: "a || b" },
       { engine: 'MySQL', code: 'CONCAT(a, b)' },
-      { engine: 'SQL Server', code: "a + b   -- or CONCAT(a, b)" },
       { engine: 'SQLite', code: 'a || b' },
     ],
   },
@@ -56,9 +56,9 @@ const items: Item[] = [
     href: '/docs/functions/dates',
     note: 'CURRENT_DATE / CURRENT_TIMESTAMP are the standard forms most engines also accept.',
     rows: [
+      { engine: 'SQL Server', code: 'GETDATE()' },
       { engine: 'PostgreSQL', code: 'now()   -- or CURRENT_TIMESTAMP' },
       { engine: 'MySQL', code: 'NOW()' },
-      { engine: 'SQL Server', code: 'GETDATE()' },
       { engine: 'SQLite', code: "datetime('now')" },
     ],
   },
@@ -67,9 +67,9 @@ const items: Item[] = [
     href: '/docs/functions/dates',
     note: 'This is the least portable corner of SQL — expect a different function name everywhere.',
     rows: [
+      { engine: 'SQL Server', code: 'DATETRUNC(month, ts)   -- 2022+' },
       { engine: 'PostgreSQL', code: "date_trunc('month', ts)" },
       { engine: 'MySQL', code: "DATE_FORMAT(ts, '%Y-%m-01')" },
-      { engine: 'SQL Server', code: 'DATETRUNC(month, ts)   -- 2022+' },
       { engine: 'SQLite', code: "strftime('%Y-%m', ts)" },
     ],
   },
@@ -77,9 +77,9 @@ const items: Item[] = [
     title: 'Add an interval to a date',
     href: '/docs/functions/dates',
     rows: [
+      { engine: 'SQL Server', code: 'DATEADD(day, 7, ts)' },
       { engine: 'PostgreSQL', code: "ts + INTERVAL '7 days'" },
       { engine: 'MySQL', code: 'DATE_ADD(ts, INTERVAL 7 DAY)' },
-      { engine: 'SQL Server', code: 'DATEADD(day, 7, ts)' },
       { engine: 'SQLite', code: "date(ts, '+7 days')" },
     ],
     note: 'Store timestamps in UTC and do this math before formatting for display.',
@@ -87,11 +87,11 @@ const items: Item[] = [
   {
     title: 'Upsert (insert or update)',
     href: '/docs/dml/upsert',
-    note: 'Only PostgreSQL and SQLite share syntax here. MySQL and standard SQL/SQL Server are both genuinely different shapes — see the full page.',
+    note: "MERGE is the most different shape here. Postgres and SQLite share ON CONFLICT syntax; MySQL has its own ON DUPLICATE KEY UPDATE — see the full page.",
     rows: [
+      { engine: 'SQL Server', code: 'MERGE INTO t USING src ON ... WHEN MATCHED ...' },
       { engine: 'PostgreSQL', code: 'INSERT ... ON CONFLICT (id) DO UPDATE SET ...' },
       { engine: 'MySQL', code: 'INSERT ... ON DUPLICATE KEY UPDATE ...' },
-      { engine: 'SQL Server', code: 'MERGE INTO t USING src ON ... WHEN MATCHED ...' },
       { engine: 'SQLite', code: 'INSERT ... ON CONFLICT (id) DO UPDATE SET ...' },
     ],
   },
@@ -99,9 +99,9 @@ const items: Item[] = [
     title: 'Auto-incrementing primary key',
     note: 'SQLite doesn\'t need a keyword at all — INTEGER PRIMARY KEY is an alias for the internal rowid and auto-increments on its own.',
     rows: [
+      { engine: 'SQL Server', code: 'id INT IDENTITY(1,1) PRIMARY KEY' },
       { engine: 'PostgreSQL', code: 'id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY' },
       { engine: 'MySQL', code: 'id INT AUTO_INCREMENT PRIMARY KEY' },
-      { engine: 'SQL Server', code: 'id INT IDENTITY(1,1) PRIMARY KEY' },
       { engine: 'SQLite', code: 'id INTEGER PRIMARY KEY' },
     ],
   },
@@ -109,9 +109,9 @@ const items: Item[] = [
     title: 'Case-insensitive match',
     note: "SQL Server and MySQL's default collations are usually already case-insensitive — this is for when they aren't, or you need it explicitly.",
     rows: [
+      { engine: 'SQL Server', code: "col LIKE 'a%'  -- ci collation by default" },
       { engine: 'PostgreSQL', code: "col ILIKE 'a%'" },
       { engine: 'MySQL', code: "col LIKE 'a%'  -- ci collation by default" },
-      { engine: 'SQL Server', code: "col LIKE 'a%'  -- ci collation by default" },
       { engine: 'SQLite', code: "col LIKE 'a%'  -- ASCII case-insensitive by default" },
     ],
   },
@@ -120,9 +120,9 @@ const items: Item[] = [
     href: '/docs/functions/strings',
     note: 'All 1-indexed; 0 means not found. Watch the argument order — POSITION reads needle-in-haystack, the others read haystack-then-needle.',
     rows: [
+      { engine: 'SQL Server', code: "CHARINDEX('cd', s)" },
       { engine: 'PostgreSQL', code: "POSITION('cd' IN s)   -- or STRPOS(s, 'cd')" },
       { engine: 'MySQL', code: "INSTR(s, 'cd')" },
-      { engine: 'SQL Server', code: "CHARINDEX('cd', s)" },
       { engine: 'SQLite', code: "instr(s, 'cd')" },
     ],
   },
@@ -130,9 +130,9 @@ const items: Item[] = [
     title: 'Extract a substring',
     href: '/docs/functions/strings',
     rows: [
+      { engine: 'SQL Server', code: 'SUBSTRING(s, 2, 3)' },
       { engine: 'PostgreSQL', code: 'SUBSTRING(s FROM 2 FOR 3)' },
       { engine: 'MySQL', code: 'SUBSTRING(s, 2, 3)' },
-      { engine: 'SQL Server', code: 'SUBSTRING(s, 2, 3)' },
       { engine: 'SQLite', code: 'substr(s, 2, 3)' },
     ],
     note: 'Positions are 1-indexed everywhere.',
@@ -142,9 +142,9 @@ const items: Item[] = [
     href: '/docs/functions/strings',
     note: 'No standard form at all, and SQLite has nothing built in — see the full page for a workaround.',
     rows: [
+      { engine: 'SQL Server', code: "SELECT value FROM STRING_SPLIT(s, ',')" },
       { engine: 'PostgreSQL', code: "SPLIT_PART(s, ',', 2)" },
       { engine: 'MySQL', code: "SUBSTRING_INDEX(s, ',', 2)" },
-      { engine: 'SQL Server', code: "SELECT value FROM STRING_SPLIT(s, ',')" },
       { engine: 'SQLite', code: 'no built-in — instr()/substr() by hand' },
     ],
   },
@@ -153,9 +153,9 @@ const items: Item[] = [
     href: '/blog/null-in-sql-guide',
     note: 'Standard = treats two NULLs as unequal (unknown, actually). These operators say "yes, both NULL counts as equal."',
     rows: [
+      { engine: 'SQL Server', code: '(a = b) OR (a IS NULL AND b IS NULL)' },
       { engine: 'PostgreSQL', code: 'a IS NOT DISTINCT FROM b' },
       { engine: 'MySQL', code: 'a <=> b' },
-      { engine: 'SQL Server', code: '(a = b) OR (a IS NULL AND b IS NULL)' },
       { engine: 'SQLite', code: 'a IS NOT DISTINCT FROM b' },
     ],
   },
@@ -164,9 +164,9 @@ const items: Item[] = [
     href: '/docs/performance/explain',
     note: '"ANALYZE" variants actually execute the query — not a dry run on a mutating statement.',
     rows: [
+      { engine: 'SQL Server', code: 'SET STATISTICS PROFILE ON' },
       { engine: 'PostgreSQL', code: 'EXPLAIN [ANALYZE] SELECT ...' },
       { engine: 'MySQL', code: 'EXPLAIN [ANALYZE] SELECT ...   -- 8.0.18+ for ANALYZE' },
-      { engine: 'SQL Server', code: 'SET STATISTICS PROFILE ON' },
       { engine: 'SQLite', code: 'EXPLAIN QUERY PLAN SELECT ...' },
     ],
   },
@@ -174,9 +174,9 @@ const items: Item[] = [
     title: 'Start a transaction',
     href: '/docs/transactions/basics',
     rows: [
+      { engine: 'SQL Server', code: 'BEGIN TRANSACTION;' },
       { engine: 'PostgreSQL', code: 'BEGIN;' },
       { engine: 'MySQL', code: 'START TRANSACTION;' },
-      { engine: 'SQL Server', code: 'BEGIN TRANSACTION;' },
       { engine: 'SQLite', code: 'BEGIN;' },
     ],
     note: 'COMMIT / ROLLBACK end it the same way on all four.',
@@ -185,9 +185,9 @@ const items: Item[] = [
     title: 'Quoting an identifier with special characters',
     note: 'Mixing these up is one of the most common cross-engine porting errors — a query with "col" fails outright on MySQL.',
     rows: [
+      { engine: 'SQL Server', code: '[Order Date]' },
       { engine: 'PostgreSQL', code: '"Order Date"' },
       { engine: 'MySQL', code: '`Order Date`' },
-      { engine: 'SQL Server', code: '[Order Date]' },
       { engine: 'SQLite', code: '"Order Date"   -- also accepts [ ] and `' },
     ],
   },
@@ -195,9 +195,9 @@ const items: Item[] = [
     title: 'Recursive CTE',
     href: '/docs/core/cte',
     rows: [
+      { engine: 'SQL Server', code: 'WITH r AS (...) SELECT ...   -- no RECURSIVE keyword needed' },
       { engine: 'PostgreSQL', code: 'WITH RECURSIVE r AS (...) SELECT ...' },
       { engine: 'MySQL', code: 'WITH RECURSIVE r AS (...) SELECT ...   -- 8.0.1+' },
-      { engine: 'SQL Server', code: 'WITH r AS (...) SELECT ...   -- no RECURSIVE keyword needed' },
       { engine: 'SQLite', code: 'WITH RECURSIVE r AS (...) SELECT ...' },
     ],
     note: 'SQL Server infers recursion from the CTE referencing itself — it doesn’t use the RECURSIVE keyword at all.',
@@ -209,11 +209,11 @@ export default function DialectsPage() {
     <main className="mx-auto w-full max-w-5xl px-6 py-12 md:py-16">
       <header className="max-w-2xl">
         <h1 className="text-3xl font-semibold tracking-[-0.03em] text-fd-foreground md:text-4xl">
-          SQL dialect comparison
+          T-SQL vs. Postgres, MySQL, SQLite
         </h1>
         <p className="mt-3 text-fd-muted-foreground">
-          The same operation, four ways. Organized by engine instead of by topic — for when
-          you know what you want to do and just need the syntax for a specific database.
+          The same operation, compared against T-SQL first. For when you know the SQL
+          Server syntax and need the equivalent elsewhere — or the other way around.
         </p>
       </header>
 

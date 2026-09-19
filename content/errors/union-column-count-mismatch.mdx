@@ -2,14 +2,14 @@
 title: "UNION: queries must have the same number of columns"
 description: Every SELECT combined with UNION, INTERSECT, or EXCEPT has to return the same number of columns, in a compatible order. Here's the fix and the type-compatibility trap that comes right after it.
 date: "2026-09-13"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["set-operations"]
 ---
 
+- **SQL Server:** `All queries combined using a UNION, INTERSECT or EXCEPT operator must have an equal number of expressions in their target lists.`
 - **SQLite:** `SELECTs to the left and right of UNION do not have the same number of result columns`
 - **PostgreSQL:** `ERROR: each UNION query must have the same number of columns`
 - **MySQL:** `The used SELECT statements have a different number of columns`
-- **SQL Server:** `All queries combined using a UNION, INTERSECT or EXCEPT operator must have an equal number of expressions in their target lists.`
 
 <SqlRunner query={`SELECT customer_id, name FROM customers
 UNION

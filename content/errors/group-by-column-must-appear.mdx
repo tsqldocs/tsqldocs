@@ -2,15 +2,15 @@
 title: "column must appear in the GROUP BY clause"
 description: You selected a column that isn't grouped and isn't wrapped in an aggregate. Postgres, MySQL (in strict mode), and SQL Server all refuse to guess which row's value you meant.
 date: "2026-09-13"
-engines: ["PostgreSQL", "MySQL", "SQL Server"]
+engines: ["SQL Server", "PostgreSQL", "MySQL"]
 tags: ["group-by", "aggregation"]
 ---
 
 The exact wording differs by engine, but it's the same complaint everywhere:
 
+- **SQL Server:** `Column 'orders.order_date' is invalid in the select list because it is not contained in either an aggregate function or the GROUP BY clause.`
 - **PostgreSQL:** `ERROR: column "orders.order_date" must appear in the GROUP BY clause or be used in an aggregate function`
 - **MySQL** (with `ONLY_FULL_GROUP_BY`, the default since 5.7): `Expression #2 of SELECT list is not in GROUP BY clause and contains nonaggregated column 'orders.order_date' which is not functionally dependent on columns in GROUP BY clause`
-- **SQL Server:** `Column 'orders.order_date' is invalid in the select list because it is not contained in either an aggregate function or the GROUP BY clause.`
 
 ## The cause
 
@@ -69,8 +69,8 @@ answer — but which row it came from isn't defined by the query, only by
 whatever order SQLite happened to scan the table in. Change an index, add a
 row, or upgrade SQLite, and the value can change out from under you with no
 error to flag it. If you write this in SQLite and it "works," test the
-same query against Postgres or MySQL before you trust it — they'll catch
-what SQLite won't.
+same query against SQL Server before you trust it — it'll catch what
+SQLite won't.
 
 <Related>
 - [GROUP BY](/docs/core/group-by) — the full rules for what can and can't appear in the SELECT list.

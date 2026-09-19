@@ -2,14 +2,14 @@
 title: "Duplicate key / unique constraint violation"
 description: You inserted or updated a row into a value that already exists in a primary key or unique column. The fix depends on whether the duplicate is a bug or an expected case you need to handle.
 date: "2026-09-13"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["dml", "constraints"]
 ---
 
+- **SQL Server:** `Violation of PRIMARY KEY constraint 'PK_customers'. Cannot insert duplicate key in object 'dbo.customers'. The duplicate key value is (1).`
 - **SQLite:** `UNIQUE constraint failed: customers.customer_id`
 - **PostgreSQL:** `ERROR: duplicate key value violates unique constraint "customers_pkey" DETAIL: Key (customer_id)=(1) already exists.`
 - **MySQL:** `#1062 - Duplicate entry '1' for key 'customers.PRIMARY'`
-- **SQL Server:** `Violation of PRIMARY KEY constraint 'PK_customers'. Cannot insert duplicate key in object 'dbo.customers'. The duplicate key value is (1).`
 
 Customer `1` already exists — inserting it again fails, on every engine
 including the one running this example live:

@@ -123,20 +123,21 @@ export default function HomePage() {
           <div className="flex flex-col items-center gap-6 text-center lg:items-start lg:text-left">
             <span className="inline-flex items-center gap-2 rounded-full border border-fd-primary/25 bg-fd-primary/10 px-3 py-1.5 text-xs font-medium text-fd-primary">
               <SparklesIcon className="size-3.5" />
-              Runnable SQL reference, with an AI that knows it
+              The T-SQL reference for SQL Server, with an AI that knows it
             </span>
 
             <h1 className="text-4xl font-semibold tracking-[-0.04em] text-fd-foreground md:text-5xl lg:text-6xl">
-              Every SQL pattern,{' '}
+              Every T-SQL pattern,{' '}
               <span className="bg-gradient-to-r from-fd-primary to-sky-400 bg-clip-text text-transparent">
                 runnable in your browser
               </span>
             </h1>
 
             <p className="max-w-xl text-lg text-fd-muted-foreground">
-              A practical reference for the clauses, joins, window functions, and edge cases that
-              break production queries — each one with a live example you can edit and run, and an
-              AI assistant grounded in every page.
+              A practical T-SQL (SQL Server) reference for the clauses, joins, window functions,
+              and edge cases that break production queries. Most examples run live in your
+              browser; the syntax that&rsquo;s genuinely SQL-Server-only is called out clearly
+              where it can&rsquo;t. An AI assistant is grounded in every page.
             </p>
 
             <div className="mt-2 flex flex-wrap items-center justify-center gap-3 lg:justify-start">

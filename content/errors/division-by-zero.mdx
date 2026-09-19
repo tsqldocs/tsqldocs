@@ -2,7 +2,7 @@
 title: "Division by zero"
 description: Some engines throw a hard error, others silently return NULL — knowing which one you're on decides whether this bug crashes your query or just quietly corrupts a report.
 date: "2026-09-13"
-engines: ["PostgreSQL", "MySQL", "SQL Server", "SQLite"]
+engines: ["SQL Server", "PostgreSQL", "MySQL", "SQLite"]
 tags: ["type-coercion", "troubleshooting"]
 ---
 
@@ -10,8 +10,8 @@ This is the rare error page here where the "fix" depends entirely on which
 engine you're reading this for — because they don't even agree on whether
 it's an error.
 
-- **PostgreSQL:** `ERROR: division by zero` — hard error, transaction aborts.
 - **SQL Server:** `Divide by zero error encountered.` — hard error, statement fails.
+- **PostgreSQL:** `ERROR: division by zero` — hard error, transaction aborts.
 - **MySQL:** returns `NULL` and a warning (`Warning: 1365 Division by 0`) —
   unless `sql_mode` includes `ERROR_FOR_DIVISION_BY_ZERO` with strict mode,
   in which case it errors instead.

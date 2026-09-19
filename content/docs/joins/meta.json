@@ -3,6 +3,7 @@
   "pages": [
     "inner-join",
     "left-join",
-    "full-outer-join"
+    "full-outer-join",
+    "apply"
   ]
 }
