@@ -13,6 +13,7 @@ import type { Metadata } from 'next';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
 import { MessageCircleIcon } from 'lucide-react';
 import { AISearchTrigger } from '@/components/ai/search';
+import { EditPageLink } from '@/components/edit-page-link';
 import { ReportIssueLink } from '@/components/report-issue-link';
 import { WasThisHelpful } from '@/components/was-this-helpful';
 import { gitConfig, siteUrl } from '@/lib/shared';
@@ -44,6 +45,7 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
           <MessageCircleIcon />
           Ask AI
         </AISearchTrigger>
+        <EditPageLink path={page.path} />
         <ReportIssueLink pageUrl={page.url} title={page.data.title} />
       </div>
       <DocsBody>
