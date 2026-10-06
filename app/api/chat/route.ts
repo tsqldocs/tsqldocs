@@ -10,6 +10,7 @@ import {
 import { z } from 'zod';
 import { source } from '@/lib/source';
 import { errors as errorEntries, errorSlug } from '@/lib/error-source';
+import { blog as blogEntries, blogSlug } from '@/lib/blog-source';
 import { ChatUIMessage, SearchTool } from '../../../components/ai/search';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { createDocsSearchIndex, weightedDocsSearch, type DocsSearchDocument } from '@/lib/docs-search';
@@ -44,7 +45,16 @@ async function createSearchServer() {
     } as DocsSearchDocument)),
   );
 
-  for (const doc of [...docs, ...errorDocs]) {
+  const blogDocs = await chunkedAll(
+    blogEntries.entries.map(async (entry) => ({
+      title: entry.title,
+      description: entry.description,
+      url: `/blog/${blogSlug(entry.info.path)}`,
+      content: await entry.getText('processed'),
+    } as DocsSearchDocument)),
+  );
+
+  for (const doc of [...docs, ...errorDocs, ...blogDocs]) {
     if (doc) search.add(doc);
   }
 

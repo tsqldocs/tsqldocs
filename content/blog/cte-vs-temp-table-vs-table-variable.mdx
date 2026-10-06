@@ -1,0 +1,148 @@
+---
+title: "CTE vs temp table vs table variable: which one in T-SQL"
+description: Three ways to name an intermediate result in T-SQL, and they are not interchangeable — one gets real statistics, one doesn't, and one disappears the moment you close over it.
+date: "2026-10-06"
+tags: ["t-sql", "performance", "guide"]
+---
+
+Three different T-SQL constructs all answer "give this intermediate result a
+name so the rest of the query can be readable" — a CTE, a temp table, and a
+table variable — and it's genuinely easy to default to whichever one you
+reached for last, since all three *compile*. They behave differently enough
+that the wrong choice is a real (if quiet) performance bug, not just a style
+preference.
+
+## The quick version
+
+| | Statistics | Scope | Indexable | Survives a ROLLBACK? |
+| --- | --- | --- | --- | --- |
+| **CTE** | none — inlined into the query that references it | one statement only | no | n/a, not a stored object |
+| **Temp table** (`#t`) | real, auto-updated statistics | the session (or the batch, for `##global`) | yes, any index | no — rolled back with the transaction |
+| **Table variable** (`@t`) | effectively none (a fixed low-row estimate) | the batch/procedure only | only `PRIMARY KEY`/`UNIQUE` at declaration | **yes** — survives a `ROLLBACK` |
+
+## A CTE isn't a materialized thing at all
+
+`WITH x AS (...)` doesn't create storage or precompute anything by default —
+the optimizer is free to inline the CTE's definition into the outer query
+however it sees fit, the same way it would a subquery. This part *is*
+portable, and runs the same way here as it would on SQL Server:
+
+<SqlRunner query={`WITH big_spenders AS (
+  SELECT customer_id, SUM(amount) AS total
+  FROM orders
+  GROUP BY customer_id
+  HAVING SUM(amount) > 100
+)
+SELECT c.name, b.total
+FROM big_spenders b
+JOIN customers c ON c.customer_id = b.customer_id
+ORDER BY b.total DESC;`} />
+
+Reference `big_spenders` twice in the same query, and the optimizer may
+compute it twice — a CTE is a name for a query fragment, not a cache. If you
+need the result computed once and reused, a CTE is the wrong tool regardless
+of which engine you're on.
+
+## Temp tables get real statistics — that's the whole point of them
+
+A `#temp` table is T-SQL-specific syntax (no direct equivalent in Postgres,
+MySQL, or SQLite — this can't run in the sandbox below):
+
+```sql
+SELECT customer_id, SUM(amount) AS total
+INTO #big_spenders
+FROM orders
+GROUP BY customer_id
+HAVING SUM(amount) > 100;
+
+CREATE INDEX ix_big_spenders ON #big_spenders(customer_id);
+
+SELECT c.name, b.total
+FROM #big_spenders b
+JOIN customers c ON c.customer_id = b.customer_id
+ORDER BY b.total DESC;
+```
+
+Because it's a real object in `tempdb`, SQL Server builds genuine statistics
+on it — row counts, data distribution — the same way it would for a
+permanent table. That matters directly for query plan quality: when a
+multi-step batch builds up an intermediate result and then joins it against
+other tables, the optimizer is making real, informed decisions about join
+order and algorithm based on how big `#big_spenders` actually turned out to
+be — not a guess.
+
+## Table variables trade accuracy for a narrower transaction scope
+
+A table variable looks similar at a glance but behaves differently in the
+two ways that matter most:
+
+```sql
+DECLARE @big_spenders TABLE (customer_id INT PRIMARY KEY, total DECIMAL(10,2));
+
+INSERT INTO @big_spenders
+SELECT customer_id, SUM(amount)
+FROM orders
+GROUP BY customer_id
+HAVING SUM(amount) > 100;
+
+SELECT c.name, b.total
+FROM @big_spenders b
+JOIN customers c ON c.customer_id = b.customer_id
+ORDER BY b.total DESC;
+```
+
+**No real statistics.** Older SQL Server versions assume exactly 1 row for a
+table variable regardless of how many it actually holds; newer versions (2019+,
+under the right compatibility level) do better with "deferred compilation,"
+but it's still not as reliable as a temp table's real stats. On a small
+lookup table this never matters. On one holding tens of thousands of rows
+feeding into a join, an optimizer working from a wrong-by-orders-of-magnitude
+row estimate can pick a genuinely bad plan.
+
+**Survives a `ROLLBACK`.** This is the one genuinely useful property a temp
+table doesn't have — a table variable's contents are **not** transactional,
+so you can use one to accumulate a log of what a transaction attempted even
+if that transaction later rolls back:
+
+```sql
+DECLARE @attempted_ids TABLE (order_id INT);
+
+BEGIN TRANSACTION;
+  INSERT INTO @attempted_ids SELECT order_id FROM orders WHERE status = 'pending';
+  -- ... do work that might fail ...
+ROLLBACK TRANSACTION;
+
+-- @attempted_ids still has the rows — a #temp table's would be gone too
+SELECT * FROM @attempted_ids;
+```
+
+## Picking one
+
+- **A CTE** when you're naming a query fragment for readability, referencing
+  it once, and the whole thing is one statement. The default choice for
+  "this `SELECT` is getting hard to read nested."
+- **A temp table** when the intermediate result is large, gets referenced
+  multiple times, needs its own index, or feeds into a join where the
+  optimizer needs accurate statistics to pick a good plan. The default
+  choice for a real multi-step batch or stored procedure.
+- **A table variable** when the result is small (a short lookup list, a few
+  dozen rows) and simple, or specifically when you need it to survive a
+  `ROLLBACK`. Reach for it narrowly, not as a lighter-weight temp table by
+  default — the missing statistics are a real cost once the row count grows
+  past "small."
+
+## Can't fully run this in the playground
+
+`#temp` tables and `DECLARE @t TABLE` are T-SQL-specific syntax the SQLite
+sandbox here doesn't have — the CTE example above is live and portable, but
+the temp table and table variable code blocks are reference only. Test the
+statistics/plan difference against an actual SQL Server instance with
+[Reading a SQL Server execution plan](/blog/reading-a-sql-server-execution-plan).
+
+<Related>
+- [CTE (WITH)](/docs/core/cte) — the full syntax reference, including recursive CTEs.
+- [Reading query plans](/docs/performance/explain) — EXPLAIN across engines, including the scan-vs-search distinction that statistics quality feeds into.
+- [Transactions basics](/docs/transactions/basics) — what ROLLBACK actually undoes, and why table variables are the exception.
+</Related>
+
+<TryPlayground>Try referencing the `big_spenders` CTE twice in one query (e.g. once in a JOIN, once in a scalar subquery) and think about whether the engine is likely computing it once or twice.</TryPlayground>

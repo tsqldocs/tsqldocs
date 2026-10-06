@@ -1,0 +1,139 @@
+---
+title: "Reading a SQL Server execution plan: the Key Lookup problem"
+description: The graphical plan in SSMS has its own vocabulary — operators, arrow thickness, cost percentages — and one specific icon pattern that's worth learning to spot on sight.
+date: "2026-10-06"
+tags: ["t-sql", "performance", "guide"]
+---
+
+[Reading query plans](/docs/performance/explain) covers `EXPLAIN` across all
+four engines and the scan-vs-search idea that applies everywhere. This one
+is narrower and SQL-Server-specific: what the actual graphical plan in SSMS
+(or Azure Data Studio) is telling you, operator by operator, and the one
+recurring pattern — the Key Lookup — that's worth being able to spot
+instantly.
+
+## Reading direction
+
+A SQL Server plan reads **right to left, bottom to top** — the operator
+furthest to the right and lowest in the tree runs first; data flows left and
+up through each operator above it, ending at the `SELECT` icon on the far
+left. This trips people up because it's the opposite of reading order for
+everything else on the screen.
+
+## The two numbers everyone looks at first (and shouldn't, alone)
+
+Every operator shows a **cost %** — its estimated share of the whole
+query's cost. It's tempting to just find the biggest percentage and start
+there, but the cost is an *estimate* produced before the query runs
+(unless you're looking at an **Actual** execution plan, not an **Estimated**
+one) — and it's calculated from the same statistics that can be stale. Two
+numbers worth checking before trusting the cost percentage at all:
+
+- **Estimated rows vs. Actual rows** (only visible in an *Actual* plan —
+  run the query, don't just display the estimated plan) on each operator.
+  A big gap means the optimizer picked this whole plan shape based on a
+  guess that turned out wrong.
+- **Actual Execution Mode**: Row vs. Batch — batch mode processes chunks of
+  rows at once and is dramatically faster for large scans/aggregations;
+  seeing Row mode on an operator touching millions of rows is itself worth
+  investigating.
+
+## Arrow thickness is a row count, not a cost
+
+The arrows connecting operators are drawn **proportional to the number of
+rows flowing through them** — a thick arrow near the start of the plan that
+narrows to a thin one downstream usually means a filter is doing real work
+early; a thick arrow that *stays* thick all the way to an expensive join is
+often the actual problem, more directly than the cost percentages are.
+
+## The core operators
+
+- **Clustered Index Scan / Table Scan** — reads every row. The direct
+  equivalent of `SCAN` in SQLite's plan output, or `Seq Scan` in Postgres's.
+- **Clustered Index Seek / Index Seek** — navigates directly to matching
+  rows using an index, the equivalent of `SEARCH`. This is what you want to
+  see on a selective filter against a large table.
+- **Key Lookup** (sometimes `RID Lookup` on a heap table with no clustered
+  index) — see below, this one's worth its own section.
+- **Nested Loops** — fine when the outer input is small; cost grows
+  multiplicatively with both inputs' size otherwise.
+- **Hash Match** — builds a hash table from one input in memory before
+  probing it with the other; needs enough memory grant to avoid spilling to
+  disk, which shows up as a separate, expensive warning icon when it
+  happens.
+- **Sort** — often the real cost hiding behind an innocent-looking
+  `ORDER BY`, especially when it can't be satisfied by an existing index's
+  order.
+
+## The Key Lookup problem
+
+This is the single pattern worth training your eye to catch: an **Index
+Seek** immediately followed by a **Key Lookup**, joined back together by a
+**Nested Loops** operator. It means: the index got you to the right *rows*
+quickly, but the index didn't contain every *column* the query actually
+needs — so for each row found, SQL Server does a second trip back to the
+full table (or clustered index) to fetch the missing columns.
+
+```sql
+-- index only covers customer_id — a seek finds the right rows fast
+CREATE INDEX ix_orders_customer ON orders(customer_id);
+
+-- but this also needs order_date and amount, which aren't in that index
+SELECT order_id, order_date, amount
+FROM orders
+WHERE customer_id = 42;
+```
+
+For a handful of matching rows this is harmless — a few extra lookups cost
+nothing. It becomes a real problem exactly when the seek matches *many*
+rows: a Key Lookup running once per row, multiplied by a large match count,
+frequently costs more than the scan it was supposed to avoid in the first
+place. SSMS often flags this for you directly with a green "Missing Index"
+suggestion at the top of the plan — but the suggestion is just a starting
+point; the fix is usually to extend the existing index as a **covering
+index** instead of blindly accepting a new one:
+
+```sql
+-- INCLUDE adds columns to the index's leaf level without making them
+-- part of the key — enough to satisfy the query without a second trip
+CREATE INDEX ix_orders_customer_covering
+  ON orders(customer_id)
+  INCLUDE (order_date, amount);
+```
+
+After that change, the Key Lookup disappears from the plan entirely — the
+Index Seek alone now has every column the query needs.
+
+## What actually transfers to the SQLite sandbox here
+
+SQLite's `EXPLAIN QUERY PLAN` gives you the scan-vs-search distinction this
+site's examples run live — genuinely the same underlying idea as Seek vs
+Scan above:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders;
+CREATE TABLE scratch_orders AS SELECT * FROM orders;
+
+EXPLAIN QUERY PLAN
+SELECT * FROM scratch_orders WHERE customer_id = 1;`} />
+
+<SqlRunner query={`CREATE INDEX idx_scratch_customer ON scratch_orders(customer_id);
+
+EXPLAIN QUERY PLAN
+SELECT * FROM scratch_orders WHERE customer_id = 1;`} />
+
+What doesn't transfer: SQLite's plan output is text, not a graphical tree,
+and it has no direct equivalent of the Key Lookup/covering-index distinction
+in its output the way SQL Server's graphical plan does — SQLite's own
+query planner has a related but differently-surfaced concept (a `SEARCH`
+using a non-covering index still does a second step internally, it's just
+not broken out as a separate plan node the way SQL Server's Key Lookup is).
+Test the Key Lookup example above against an actual SQL Server instance to
+see it directly.
+
+<Related>
+- [Reading query plans](/docs/performance/explain) — EXPLAIN across all four engines, and the scan-vs-search idea this post builds on.
+- [Indexes](/docs/performance/indexes) — what makes an index selective enough to produce a Seek in the first place.
+- [CTE vs temp table vs table variable](/blog/cte-vs-temp-table-vs-table-variable) — where statistics quality (one of the inputs to the plans this post is about) differs across the three.
+</Related>
+
+<TryPlayground>Run the two EXPLAIN QUERY PLAN examples above back to back and confirm the `SCAN` → `SEARCH` change, same as the covering-index example removes the Key Lookup on SQL Server.</TryPlayground>

@@ -1,0 +1,122 @@
+---
+title: "ISNULL vs COALESCE: the truncation bug T-SQL lets you write"
+description: Both fill in a value when something is NULL. They pick the output's data type by completely different rules, and the difference silently truncates real data in exactly the cases where it matters most.
+date: "2026-10-06"
+tags: ["t-sql", "type-coercion", "troubleshooting"]
+---
+
+`ISNULL(a, b)` and `COALESCE(a, b, ...)` look interchangeable — both return
+the first non-`NULL` argument. On SQL Server specifically, they disagree
+about something that matters more than the result's *value*: the result's
+**data type**. That disagreement has a real, silent failure mode.
+
+## The rule each one actually follows
+
+- **`ISNULL`** returns a value typed as the data type of its **first**
+  argument, full stop. Not standard SQL — it's a T-SQL-only function with
+  this exact behavior.
+- **`COALESCE`** is standard SQL (works the same way on Postgres, MySQL,
+  SQLite too), and follows normal data type precedence across **all** of
+  its arguments — the result is typed as whichever argument has the
+  highest-precedence type, regardless of position.
+
+For two arguments of the same type, this distinction is invisible. It stops
+being invisible the moment the two arguments are different lengths of the
+same type.
+
+## Where it actually bites
+
+```sql
+DECLARE @short VARCHAR(5) = NULL;
+DECLARE @long  VARCHAR(500) = 'This value is much longer than five characters';
+
+SELECT ISNULL(@short, @long)   AS via_isnull;    -- truncated to 5 characters
+SELECT COALESCE(@short, @long) AS via_coalesce;  -- full value, untouched
+```
+
+`ISNULL(@short, @long)` returns `VARCHAR(5)` — the type of its *first*
+argument — because that's the rule, independent of which argument's value
+actually gets returned. The fallback value gets silently truncated to fit a
+type that was never meant to hold it. `COALESCE` looks at both arguments'
+types, picks `VARCHAR(500)` as the one that can hold either, and returns
+the fallback intact.
+
+This is worse than it sounds because of *when* it shows up: the bug is
+invisible in exactly the case everyone tests — when `@short` actually has a
+value (`ISNULL` just returns it, no truncation, looks fine). It only
+appears once the fallback path is taken for real, which is often the first
+time a NULL shows up in production data that your test fixtures didn't
+have.
+
+## A realistic version
+
+A "display name" column that's usually a short code but occasionally needs
+to fall back to a long description:
+
+```sql
+SELECT
+  product_id,
+  ISNULL(short_code, full_description) AS label_broken,     -- truncated if short_code is NULL
+  COALESCE(short_code, full_description) AS label_correct
+FROM product_sales;
+```
+
+If `short_code` is `VARCHAR(10)` and `full_description` is `VARCHAR(200)`,
+every row where `short_code` is `NULL` gets a label chopped to 10
+characters — with no error, no warning, and a query that returns a result
+that *looks* like a legitimate (if short) label rather than obviously broken
+output.
+
+## The same trap applies to numeric types too
+
+It's not just string length — `ISNULL` inheriting the first argument's type
+applies to numeric precision and scale the same way:
+
+```sql
+DECLARE @a DECIMAL(5,2) = NULL;
+DECLARE @b DECIMAL(18,6) = 123.456789;
+
+SELECT ISNULL(@a, @b)   AS via_isnull;    -- rounded to 123.46 (DECIMAL(5,2))
+SELECT COALESCE(@a, @b) AS via_coalesce;  -- 123.456789, full precision
+```
+
+`ISNULL` doesn't error on the precision mismatch — it just rounds to fit,
+the same quiet failure mode as the string case.
+
+## The fix
+
+Default to `COALESCE` unless you specifically need one of `ISNULL`'s two
+genuine advantages over it:
+
+- **Slightly faster** in some query plans — `ISNULL` is a simple function,
+  `COALESCE` expands into a `CASE` expression internally. In practice this
+  almost never matters outside a very hot code path; measure before
+  treating it as a reason.
+- **Works directly inside a computed column definition** in a way
+  `COALESCE` historically had restrictions around, in older SQL Server
+  versions.
+
+If you do use `ISNULL` for either reason, make sure the first argument's
+declared type is wide enough to hold every fallback value, not just the
+"normal" one — or cast explicitly:
+
+```sql
+SELECT ISNULL(CAST(short_code AS VARCHAR(200)), full_description) AS label;
+```
+
+## Can't run this in the playground
+
+SQLite — what the sandbox on this site runs — doesn't enforce `VARCHAR(n)`
+length at all (see [VARCHAR length silently
+unenforced](/fix/varchar-length-not-enforced)), so this exact truncation
+can't be reproduced live here even using `IFNULL`, SQLite's equivalent of
+`ISNULL`. Test the examples above against an actual SQL Server instance —
+the type mismatch, and the silent truncation that follows from it, is real
+T-SQL behavior, not a simplification.
+
+<Related>
+- [COALESCE](/docs/functions/coalesce) — the function reference, cross-engine.
+- [VARCHAR length silently unenforced](/fix/varchar-length-not-enforced) — why this exact bug can't be demoed in SQLite.
+- [Type coercion](/docs/core/type-coercion) — the broader rules for how T-SQL picks a result type.
+- [NULL in SQL: the complete guide](/blog/null-in-sql-guide) — NULL semantics generally, if this is the first stop.
+</Related>
