@@ -160,6 +160,7 @@ INSERT ...` pattern or wrap `MERGE` in `HOLDLOCK`.
 - [UPDATE](/docs/dml/update) — the update path an upsert can take.
 - [BEGIN, COMMIT, ROLLBACK](/docs/transactions/basics) — wrapping a multi-row upsert batch.
 - [Isolation levels](/docs/transactions/isolation-levels) — what two concurrent upserts can still race on.
+- [Why T-SQL's MERGE has a bad reputation](/blog/merge-concurrency-bugs) — the two specific bugs behind the warning above, and which fix addresses which.
 </Related>
 
 ## Safety checklist

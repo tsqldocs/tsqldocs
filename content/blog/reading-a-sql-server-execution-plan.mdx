@@ -134,6 +134,8 @@ see it directly.
 - [Reading query plans](/docs/performance/explain) — EXPLAIN across all four engines, and the scan-vs-search idea this post builds on.
 - [Indexes](/docs/performance/indexes) — what makes an index selective enough to produce a Seek in the first place.
 - [CTE vs temp table vs table variable](/blog/cte-vs-temp-table-vs-table-variable) — where statistics quality (one of the inputs to the plans this post is about) differs across the three.
+- [Parameter sniffing](/blog/parameter-sniffing) — a cached plan that's wrong for the current call, found with the estimated-vs-actual check this post describes.
+- [Scalar UDFs in T-SQL](/blog/scalar-udf-performance) — the one cost this post's advice can't find, hidden inside an opaque plan node.
 </Related>
 
 <TryPlayground>Run the two EXPLAIN QUERY PLAN examples above back to back and confirm the `SCAN` → `SEARCH` change, same as the covering-index example removes the Key Lookup on SQL Server.</TryPlayground>

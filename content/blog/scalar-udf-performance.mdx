@@ -1,0 +1,140 @@
+---
+title: "Scalar UDFs in T-SQL: why they're slower than they look"
+description: A scalar function reads like it's just reusable logic. Historically, calling one inside a SELECT forced SQL Server to abandon set-based execution entirely and run your query one row at a time — and that's a bigger deal than it sounds.
+date: "2026-10-18"
+tags: ["t-sql", "performance"]
+---
+
+A scalar user-defined function looks like free abstraction — wrap some
+logic in `CREATE FUNCTION`, call it like any built-in, and the query
+reads cleanly:
+
+```sql
+CREATE FUNCTION dbo.DiscountedPrice(@Price DECIMAL(10,2), @CustomerId INT)
+RETURNS DECIMAL(10,2)
+AS
+BEGIN
+  DECLARE @Discount DECIMAL(4,2) = 0;
+  SELECT @Discount = discount_rate FROM customer_tiers WHERE customer_id = @CustomerId;
+  RETURN @Price * (1 - ISNULL(@Discount, 0));
+END;
+
+SELECT order_id, amount, dbo.DiscountedPrice(amount, customer_id) AS final_price
+FROM orders;
+```
+
+On SQL Server versions before 2019 (and on 2019+ without the right
+compatibility level, or for functions that don't qualify for the newer
+optimization — more on that below), this doesn't run the way it reads.
+
+## RBAR: row by agonizing row
+
+A normal `SELECT` is set-based — the engine reasons about the whole
+result set at once and picks a plan accordingly. A scalar UDF call inside
+that `SELECT`, historically, couldn't be reasoned about that way: SQL
+Server had no visibility into what the function's body actually *did*, so
+it treated it as an opaque black box and called it once per row,
+individually — context-switching into the function's own execution
+context each time, running its body (including, in the example above, an
+entire separate `SELECT` against `customer_tiers`) one full row at a time.
+The community name for this is **RBAR** — "row by agonizing row" — and
+it's not a minor overhead. A query that should be a single efficient scan
+or seek against `orders` instead executes the function's logic, including
+whatever it does internally, as many times as there are rows — and none
+of that per-row work is visible in the query's own execution plan as
+anything more than one deceptively small-looking "Scalar Function" node.
+
+## Why the plan lies to you about the cost
+
+This is the sharper version of the problem: the Scalar Function operator
+in the execution plan shows almost no cost, because the optimizer has no
+idea what's inside the function — it can't estimate the cost of something
+it can't see into. A query that's actually slow because of RBAR can show
+a plan where every *visible* operator looks cheap, with the real cost
+hidden entirely inside a node reporting close to 0%. [Reading the
+execution plan](/blog/reading-a-sql-server-execution-plan) the normal way
+— find the biggest cost percentage — doesn't find this problem; you have
+to already suspect the scalar function and measure around it directly
+(wall-clock time with and without it, or `SET STATISTICS TIME ON`) to see
+the real cost.
+
+## The fix that shipped in 2019: scalar UDF inlining
+
+SQL Server 2019, under database compatibility level 150 or higher, can
+automatically **inline** an eligible scalar UDF — rewriting the function's
+logic directly into the calling query as an equivalent set-based
+expression, instead of calling it as an opaque black box per row. Same
+function definition, same syntax, dramatically different execution —
+when it qualifies.
+
+"When it qualifies" is doing real work in that sentence. A function has to
+meet a fairly specific list of conditions to be eligible, and the common
+reasons a function falls back to the old row-by-row behavior even on 2019+
+include:
+
+- References to tables or views that have certain forms of uncommitted or
+  ambiguous schema binding
+- Use of certain non-deterministic constructs
+- `TRY`/`CATCH` inside the function body
+- Calls to extended stored procedures, or certain system functions
+- Recursive calls
+
+Check whether a specific function actually got inlined (don't assume):
+
+```sql
+SELECT OBJECT_NAME(object_id) AS function_name, is_inlineable
+FROM sys.sql_modules
+WHERE object_id = OBJECT_ID('dbo.DiscountedPrice');
+```
+
+An actual execution plan for a query calling the function also shows the
+difference directly: an inlined call shows up expanded into the plan's
+normal set-based operators (joins, filters) like any other part of the
+query; a non-inlined call still shows as a separate, cost-opaque Scalar
+Function node, same as before 2019.
+
+## The fix that always works: don't use a scalar UDF for this
+
+Independent of SQL Server version or inlining eligibility, the same logic
+expressed as an **inline table-valued function** (an `RETURNS TABLE`
+function whose body is a single `RETURN (SELECT ...)`, not a
+`BEGIN...END` block) is set-based from the start — it's expanded into the
+calling query the way a view or a derived table would be, with no
+per-row black box involved, and this has been true since inline TVFs were
+introduced, not something that depends on SQL Server 2019:
+
+```sql
+CREATE FUNCTION dbo.DiscountedPrice_Inline(@Price DECIMAL(10,2), @CustomerId INT)
+RETURNS TABLE
+AS
+RETURN (
+  SELECT @Price * (1 - ISNULL((SELECT discount_rate FROM customer_tiers WHERE customer_id = @CustomerId), 0)) AS final_price
+);
+
+SELECT o.order_id, o.amount, d.final_price
+FROM orders o
+CROSS APPLY dbo.DiscountedPrice_Inline(o.amount, o.customer_id) d;
+```
+
+This is more verbose to call (it needs [`CROSS APPLY`](/docs/joins/apply)
+instead of a plain function call in the `SELECT` list, since it returns a
+table rather than a scalar), but it's set-based on every supported SQL
+Server version, not conditionally on compatibility level and a function
+eligibility checklist.
+
+## Can't demonstrate this in the playground
+
+Scalar UDF inlining is a specific SQL Server query-optimizer behavior tied
+to compatibility level 150+ — SQLite's function model (register a native
+function from application code, not `CREATE FUNCTION` in SQL) isn't
+comparable enough for a live before/after here. Measure the difference
+directly against a real SQL Server instance with `SET STATISTICS TIME ON`
+around both versions of the query on a table with real row counts — the
+effect is invisible on a handful of test rows and very visible past a few
+hundred thousand.
+
+<Related>
+- [APPLY](/docs/joins/apply) — the join form inline table-valued functions need to be called from a SELECT list.
+- [Reading a SQL Server execution plan](/blog/reading-a-sql-server-execution-plan) — why the Scalar Function operator hides this cost instead of showing it.
+- [Parameter sniffing](/blog/parameter-sniffing) — the other T-SQL performance gotcha that hides behind a plan that looks fine at a glance.
+</Related>

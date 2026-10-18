@@ -1,0 +1,143 @@
+---
+title: "Parameter sniffing: when SQL Server's cached plan is wrong for you"
+description: A stored procedure that's fast for everyone else and slow for you isn't broken — it compiled a plan for someone else's data distribution, and SQL Server is reusing it instead of rethinking it.
+date: "2026-10-18"
+tags: ["t-sql", "performance", "troubleshooting"]
+---
+
+The symptom that makes people suspect parameter sniffing: the exact same
+stored procedure, called with different parameter values, is fast
+sometimes and slow other times — and running the slow call's parameters
+through the query *manually* (no procedure, just the literal values) is
+fast. The procedure isn't the problem. The cached plan is.
+
+## Why SQL Server caches a plan at all
+
+Compiling an execution plan costs real CPU — picking join order, join
+algorithm, which indexes to use, all based on current statistics. Doing
+that from scratch on every call would be wasteful for a procedure that
+runs thousands of times a minute, so SQL Server compiles a plan once on
+first call and reuses it for subsequent calls with different parameter
+values, keyed on the procedure's signature (this is "plan caching," and
+it's a real, necessary performance feature — parameter sniffing is really
+just the name for what happens when it goes wrong).
+
+## Where it actually goes wrong
+
+The plan compiled on that first call is optimized for *that call's*
+parameter values specifically — not for parameters in general. If
+`status = 'cancelled'` matches 12 rows out of ten million, a seek against
+an index is obviously right. If `status = 'pending'` matches six million
+of those same ten million rows, a full scan is obviously right instead —
+an index seek followed by six million individual lookups is far worse
+than just reading the table. One plan cannot be the right choice for both.
+
+```sql
+CREATE PROCEDURE dbo.GetOrdersByStatus
+  @Status VARCHAR(20)
+AS
+BEGIN
+  SELECT order_id, customer_id, amount
+  FROM orders
+  WHERE status = @Status;
+END;
+```
+
+Call this first with `@Status = 'cancelled'` (rare, selective) and SQL
+Server compiles a plan built around an index seek — fast, correctly, for
+that call. Every subsequent call reuses that exact plan, including the one
+that passes `@Status = 'pending'` (common, unselective) — which now runs
+the seek-plus-lookups plan against six million matching rows instead of
+the scan that would actually be faster for that value. The procedure
+looks intermittently, mysteriously slow, and which case you hit first
+(whichever triggered the initial compile, or the first call after a
+recompile from a stats update, a server restart, or memory pressure
+evicting the plan) is mostly down to timing, not anything about your
+query.
+
+## Confirming it's actually this, not something else
+
+Before reaching for any of the fixes below, check that the slow call
+really is reusing a plan shaped for different data — an [actual execution
+plan](/blog/reading-a-sql-server-execution-plan) on the slow call,
+checked for a large gap between **estimated** and **actual** row counts
+on the key operator, is the direct evidence. A plan estimating 12 rows
+that actually produced 6 million is parameter sniffing; a plan whose
+estimates and actuals roughly agree, just slow anyway, is a different
+problem entirely (missing index, stale statistics across the board, a
+genuinely expensive query) and none of these fixes will help it.
+
+## The fixes, in order of how surgical they are
+
+**`OPTION (RECOMPILE)`** on the specific statement — forces a fresh plan
+compiled for *this call's* actual parameter values, every single call.
+Correct for every call, at the cost of paying the compilation cost every
+single call too. Right for a procedure that runs occasionally; wrong for
+one running thousands of times a second.
+
+```sql
+SELECT order_id, customer_id, amount
+FROM orders
+WHERE status = @Status
+OPTION (RECOMPILE);
+```
+
+**`OPTIMIZE FOR`** a specific value, or **`OPTIMIZE FOR UNKNOWN`** — pins the
+compiled plan to behave as if a chosen value (or the average/typical value
+in the column's statistics, for `UNKNOWN`) was passed, regardless of what
+actually was. Useful when one case is genuinely more important to get
+right than the others, or when "a reasonable average plan" beats "whoever
+happened to call first."
+
+```sql
+SELECT order_id, customer_id, amount
+FROM orders
+WHERE status = @Status
+OPTION (OPTIMIZE FOR (@Status = 'pending'));
+```
+
+**Split the procedure** into a branch per meaningfully-different data
+shape, each getting its own cached plan:
+
+```sql
+CREATE PROCEDURE dbo.GetOrdersByStatus
+  @Status VARCHAR(20)
+AS
+BEGIN
+  IF @Status = 'pending'
+    SELECT order_id, customer_id, amount FROM orders WHERE status = @Status OPTION (RECOMPILE);
+  ELSE
+    SELECT order_id, customer_id, amount FROM orders WHERE status = @Status;
+END;
+```
+
+The highest-effort fix, but the one that gets every case its own correct
+plan without paying a full recompile on every call.
+
+## What doesn't fix it
+
+Wrapping the parameter in a local variable inside the procedure
+(`DECLARE @p VARCHAR(20) = @Status;` then filtering on `@p` instead) is a
+real, commonly-repeated trick — it genuinely does defeat sniffing, but by
+making the optimizer compile against its generic average-case estimate for
+*every* call, every time, forever. That's not a fix, it's trading "wrong
+sometimes" for "mediocre always" — worth knowing about because you'll see
+it in old code, not because it's the right answer going forward now that
+`OPTIMIZE FOR` and `RECOMPILE` exist as deliberate, visible choices.
+
+## Can't demonstrate this in the playground
+
+Parameter sniffing is specifically about SQL Server's plan cache for
+parameterized stored procedures and prepared statements — the SQLite
+sandbox here has no stored procedures or plan cache to sniff in the first
+place. Reproduce the estimated-vs-actual-rows evidence above against an
+actual SQL Server instance with a table big and skewed enough for the
+plan choice to actually matter (a few hundred rows won't show it — the
+optimizer's scan-vs-seek threshold needs real data volume on both sides to
+matter).
+
+<Related>
+- [Reading a SQL Server execution plan](/blog/reading-a-sql-server-execution-plan) — how to spot the estimated-vs-actual gap that confirms this diagnosis.
+- [Reading query plans](/docs/performance/explain) — EXPLAIN across all four engines.
+- [Indexes](/docs/performance/indexes) — the index-seek-vs-scan tradeoff a sniffed plan gets wrong for one side.
+</Related>

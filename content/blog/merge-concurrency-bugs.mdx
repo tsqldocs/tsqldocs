@@ -1,0 +1,127 @@
+---
+title: "Why T-SQL's MERGE has a bad reputation"
+description: MERGE reads as one atomic insert-or-update statement. Under concurrent load it isn't one — and the two specific ways it breaks are well documented, well known, and still catch people who've used MERGE for years.
+date: "2026-10-18"
+tags: ["t-sql", "dml", "troubleshooting"]
+---
+
+[UPSERT](/docs/dml/upsert) covers `MERGE`'s syntax and flags its
+concurrency bugs in one paragraph. This is the longer version — the two
+specific failure modes, why each one happens, and which fix actually
+addresses which problem, because they're not the same bug and don't have
+the same fix.
+
+## Bug 1: "attempted to UPDATE or DELETE the same row more than once"
+
+The more common one, and it's not really a concurrency bug at all — it
+happens on a single session, single statement, no contention required.
+`MERGE`'s `ON` clause is expected to match each target row to **at most
+one** source row. If the source side can produce more than one match for
+the same target row, SQL Server refuses outright rather than guess which
+source row should win:
+
+```sql
+MERGE INTO inventory AS target
+USING (
+  -- two source rows both matching product_id = 1 — a duplicate or a bad join upstream
+  VALUES (1, 10), (1, 15)
+) AS source (product_id, qty_change)
+ON target.product_id = source.product_id
+WHEN MATCHED THEN
+  UPDATE SET stock = target.stock + source.qty_change;
+```
+
+`Msg 8672: The MERGE statement attempted to UPDATE or DELETE the same row
+more than once. This happens when a target row matches more than one
+source row.` This is usually a sign the source query has a join fan-out
+problem — [the same fan-out that causes a plain query to return the wrong
+row count](/blog/wrong-number-of-rows) — not that `MERGE` itself is
+broken. Fix the source side to guarantee one row per key (aggregate it
+first) rather than trying to work around the error in the `MERGE`
+statement itself.
+
+## Bug 2: the actual concurrency race
+
+This is the one that gives `MERGE` its reputation, and it's real: under
+concurrent sessions hitting the same key, two sessions can both check "does
+this row exist" as part of their own `MERGE`, both get "no, it doesn't,"
+and both proceed to `INSERT` — because the check and the insert aren't one
+atomic operation the way a true upsert needs them to be, just two steps
+inside what *looks* like a single statement. The result is either a
+primary-key violation (one of the two inserts fails, loudly — the better
+outcome) or, under a weaker isolation level, two successful inserts and
+a genuine duplicate row.
+
+```sql
+-- Two sessions running this concurrently, same @ProductId, same timing:
+MERGE INTO inventory AS target
+USING (VALUES (@ProductId, @Stock)) AS source (product_id, stock)
+ON target.product_id = source.product_id
+WHEN MATCHED THEN
+  UPDATE SET stock = target.stock + source.stock
+WHEN NOT MATCHED THEN
+  INSERT (product_id, stock) VALUES (source.product_id, source.stock);
+```
+
+Under the default `READ COMMITTED` isolation level, this race is possible.
+It's a direct instance of a [general transaction-isolation
+problem](/docs/transactions/isolation-levels), not something unique to
+`MERGE`'s syntax — `MERGE` just makes it easy to write this pattern
+without realizing two sessions can interleave inside it.
+
+## The fixes, and which bug each one actually addresses
+
+**For bug 1** (multiple matches): fix the source query, not `MERGE`
+itself — `GROUP BY` or `DISTINCT` the source so each key appears once
+before it reaches the `ON` clause.
+
+**For bug 2** (the race): either add `WITH (HOLDLOCK)` to force a
+serializable lock on the target during the `MERGE` (correct, but a real
+concurrency/throughput cost under heavy write load), or skip `MERGE`
+entirely for a plain single-key upsert in favor of a pattern that's
+atomic by construction:
+
+```sql
+UPDATE inventory SET stock = stock + @Stock WHERE product_id = @ProductId;
+IF @@ROWCOUNT = 0
+  INSERT INTO inventory (product_id, stock) VALUES (@ProductId, @Stock);
+```
+
+This still has a race in theory under `READ COMMITTED` without locking
+hints, but it's a much smaller window than `MERGE`'s, and — more to the
+point — `INSERT ... ON CONFLICT` on Postgres/SQLite or `ON DUPLICATE KEY
+UPDATE` on MySQL don't have this problem *at all*, because the
+match-and-act is genuinely one atomic step at the storage engine level on
+those, not two steps assembled to look like one the way `MERGE` is. The
+race is specifically a consequence of how SQL Server implements `MERGE`,
+not an inherent property of "upsert" as a concept.
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_inventory;
+CREATE TABLE scratch_inventory (product_id INTEGER PRIMARY KEY, stock INTEGER);
+INSERT INTO scratch_inventory VALUES (1, 100);
+
+-- SQLite's ON CONFLICT: one atomic statement, no read-then-act window
+INSERT INTO scratch_inventory (product_id, stock) VALUES (1, 50)
+ON CONFLICT (product_id) DO UPDATE SET stock = scratch_inventory.stock + excluded.stock;
+
+SELECT * FROM scratch_inventory;`} />
+
+## When MERGE is still the right call
+
+None of this means avoid `MERGE` outright — for a statement that
+genuinely needs to match, update, insert, *and* delete across several
+conditions in one pass (syncing a target table to exactly match a source,
+for instance), `MERGE` is still the most direct way to express that in
+T-SQL, and the bugs above are specifically about the narrower "upsert one
+row on one key" case this post is scoped to. For that narrower case, reach
+for the `UPDATE` + `@@ROWCOUNT` pattern by default and save `MERGE` for
+when you actually need its full matched/not-matched/not-matched-by-source
+branching.
+
+<Related>
+- [UPSERT](/docs/dml/upsert) — the full syntax reference this post goes deeper than.
+- [Isolation levels](/docs/transactions/isolation-levels) — the general concurrency problem bug 2 is one instance of.
+- [Duplicate key / unique constraint violation](/fix/duplicate-key-unique-violation) — what the failed half of a lost race actually looks like.
+</Related>
+
+<TryPlayground>Run the ON CONFLICT example above twice with different stock values and confirm it accumulates correctly both times, with no read-then-act step you have to reason about.</TryPlayground>
