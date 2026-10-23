@@ -1,0 +1,117 @@
+---
+title: "Dynamic SQL in T-SQL: EXEC vs sp_executesql, and why it isn't just about injection"
+description: Building a query as a string and running it solves a real problem — an optional filter, a dynamic column list — but EXEC(@sql) and sp_executesql @sql, @params solve it with completely different security and performance consequences.
+date: "2026-10-23"
+tags: ["t-sql", "performance", "security"]
+---
+
+Dynamic SQL exists because some things genuinely can't be parameterized —
+a table name, a column list that depends on which filters the caller
+passed, an `ORDER BY` column chosen at runtime. T-SQL gives you two ways
+to actually run a string as SQL, and reaching for the wrong one by habit
+costs you either a real injection vulnerability or a cache full of plans
+that never get reused.
+
+## The naive version
+
+```sql
+DECLARE @sql NVARCHAR(MAX) = 'SELECT order_id, amount FROM orders WHERE status = ''' + @Status + '''';
+EXEC(@sql);
+```
+
+This works, reads simply, and has two real problems — one of them is the
+one everyone already knows to worry about.
+
+## Problem 1: it's a SQL injection vulnerability
+
+String-concatenating a value directly into the query text means whatever
+`@Status` contains becomes part of the SQL. If `@Status` is actually
+`'paid'' OR ''1''=''1'` — or worse — that string closes the quote early
+and appends arbitrary SQL that runs with whatever permissions the calling
+context has. This isn't a theoretical risk specific to web input; it's
+exactly as exploitable from an internal application if the value ever
+originates from anything a user can influence, directly or indirectly.
+
+## Problem 2: no plan reuse, even for identical logical queries
+
+This is the one that's easy to miss because it doesn't cause an error —
+it causes a quieter, cumulative performance cost. Every distinct string
+is, as far as the plan cache is concerned, a completely different query.
+`WHERE status = 'paid'` and `WHERE status = 'pending'` are two different
+literal strings, so they're two separately-compiled, separately-cached
+plans — for what's logically the exact same query shape run with a
+different value. At any real volume, this fills the plan cache with
+near-duplicate entries, each compiled from scratch, none of them ever
+reused by the next slightly-different call. (This is close to [parameter
+sniffing](/blog/parameter-sniffing)'s territory, but it's the opposite
+failure: sniffing is one plan reused for every value when it shouldn't
+be; this is zero plan reuse when it very much should be.)
+
+## The fix for both problems at once: sp_executesql with real parameters
+
+```sql
+DECLARE @sql NVARCHAR(MAX) = N'SELECT order_id, amount FROM orders WHERE status = @Status';
+EXEC sp_executesql @sql, N'@Status VARCHAR(20)', @Status = @Status;
+```
+
+Two changes that matter: the value is passed as a genuine parameter, not
+concatenated into the string — so there's no way for its contents to be
+interpreted as SQL syntax, which closes the injection hole directly. And
+because the *query text itself* (`N'SELECT ... WHERE status = @Status'`)
+is now identical on every call regardless of what value gets passed, SQL
+Server can match it against the plan cache and reuse the same compiled
+plan across calls — the same way a stored procedure's parameters work,
+because this is genuinely the same mechanism.
+
+## What dynamic SQL is actually for
+
+Once the value itself is parameterized correctly, the remaining
+legitimate use of string-building is for the parts of a query that *can't*
+be parameters at all — identifiers, not values:
+
+```sql
+DECLARE @sql NVARCHAR(MAX) = N'SELECT * FROM ' + QUOTENAME(@TableName) + N' WHERE status = @Status';
+EXEC sp_executesql @sql, N'@Status VARCHAR(20)', @Status = @Status;
+```
+
+A table name, column name, or schema can't be passed as an `sp_executesql`
+parameter (`@TableName VARCHAR(50)` would make SQL Server look for a
+column literally named by the *value* of a string, not substitute it as
+an identifier) — it has to be concatenated into the query text, which is
+exactly why `QUOTENAME()` matters here. `QUOTENAME(@TableName)` wraps the
+identifier in brackets and escapes any embedded `]` characters, which
+closes off the injection route for identifiers the same way a real
+parameter closes it off for values. Concatenating a table name in
+directly, unquoted, reopens the exact vulnerability `sp_executesql`
+otherwise closes — the parameterization and the `QUOTENAME()` are solving
+two different halves of the same problem, and both are required.
+
+## Still restrict what's actually allowed, even with QUOTENAME
+
+`QUOTENAME()` stops the string from being interpreted as more SQL than an
+identifier — it doesn't stop `@TableName` from legitimately naming a real
+table the caller shouldn't be allowed to query. If the table name is
+coming from outside the application's own trusted code (not just outside
+the database), validate it against an explicit allow-list before it ever
+reaches the dynamic SQL:
+
+```sql
+IF @TableName NOT IN ('orders', 'customers', 'product_sales')
+  THROW 50000, 'Invalid table name.', 1;
+```
+
+## Can't demonstrate this in the playground
+
+`sp_executesql`, `QUOTENAME`, and T-SQL's plan cache are all SQL-Server
+specific — the SQLite sandbox here has no stored procedures, no
+`EXEC`/`sp_executesql`, and no comparable plan-caching behavior to show a
+before/after against. Test the plan-cache-reuse claim directly against a
+real SQL Server instance by checking `sys.dm_exec_cached_plans` /
+`sys.dm_exec_query_stats` before and after a batch of calls with different
+parameter values, comparing the naive-concatenation version against the
+`sp_executesql` version.
+
+<Related>
+- [Parameter sniffing](/blog/parameter-sniffing) — the opposite plan-cache failure: one plan reused for every value, instead of none reused at all.
+- [Reading a SQL Server execution plan](/blog/reading-a-sql-server-execution-plan) — confirming a query actually hit the plan cache instead of compiling fresh.
+</Related>

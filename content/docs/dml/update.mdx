@@ -110,6 +110,7 @@ RETURNING order_id, amount;`} />
 - [WHERE](/docs/core/where) — the predicate rules are identical to a SELECT's WHERE.
 - [Rows missing in another table](/docs/recipes/rows-missing-in-another-table) — the join patterns UPDATE ... FROM/JOIN are built on.
 - [OUTPUT clause](/docs/dml/output-clause) — see both the old and new value of a changed row, in one statement.
+- [The Halloween Problem](/blog/halloween-problem) — the correctness hazard this statement defends against when it updates a column used to find its own rows.
 </Related>
 
 ## Safety checklist

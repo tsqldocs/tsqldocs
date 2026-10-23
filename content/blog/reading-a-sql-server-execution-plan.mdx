@@ -136,6 +136,8 @@ see it directly.
 - [CTE vs temp table vs table variable](/blog/cte-vs-temp-table-vs-table-variable) — where statistics quality (one of the inputs to the plans this post is about) differs across the three.
 - [Parameter sniffing](/blog/parameter-sniffing) — a cached plan that's wrong for the current call, found with the estimated-vs-actual check this post describes.
 - [Scalar UDFs in T-SQL](/blog/scalar-udf-performance) — the one cost this post's advice can't find, hidden inside an opaque plan node.
+- [The implicit conversion that quietly kills your index](/blog/implicit-conversion-kills-index) — a Scan where a Seek looked possible, with CONVERT_IMPLICIT in the predicate as the tell.
+- [The Halloween Problem](/blog/halloween-problem) — the spool operator that shows up on some UPDATE/DELETE plans, and why.
 </Related>
 
 <TryPlayground>Run the two EXPLAIN QUERY PLAN examples above back to back and confirm the `SCAN` → `SEARCH` change, same as the covering-index example removes the Key Lookup on SQL Server.</TryPlayground>

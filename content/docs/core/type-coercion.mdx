@@ -90,6 +90,7 @@ match on an engine where the column is a real integer or boolean type.
 - [MIN / MAX](/docs/functions/min-max) — the text-sort gotcha in the context of an aggregate.
 - [WHERE](/docs/core/where) — how a coerced comparison interacts with three-valued logic.
 - [Dates & times](/docs/functions/dates) — storing dates as a real date type instead of text.
+- [The implicit conversion that quietly kills your index](/blog/implicit-conversion-kills-index) — the highest-impact instance of this: a type mismatch that silently turns a seek into a scan.
 </Related>
 
 ## Safety checklist

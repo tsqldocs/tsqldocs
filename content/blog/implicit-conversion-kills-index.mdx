@@ -1,0 +1,129 @@
+---
+title: "The implicit conversion that quietly kills your index"
+description: A WHERE clause comparing two different-but-similar-looking types doesn't error in T-SQL — it silently converts one side, and if that side is the indexed column, the index becomes unusable without a single visible sign of it.
+date: "2026-10-23"
+tags: ["t-sql", "performance", "type-coercion"]
+---
+
+This is the single most common real-world cause of "this query should
+obviously use the index, and it isn't" in production T-SQL — more often
+than a missing index, more often than stale statistics. The index exists.
+SQL Server just can't use it, because of a type mismatch that produces no
+error at all.
+
+## The setup
+
+```sql
+CREATE TABLE customers (
+  customer_id INT PRIMARY KEY,
+  email       VARCHAR(100) NOT NULL
+);
+CREATE INDEX ix_customers_email ON customers(email);
+```
+
+A perfectly reasonable index on a perfectly reasonable lookup column. This
+query looks like it should seek straight to the matching row:
+
+```sql
+SELECT customer_id FROM customers WHERE email = N'alice@example.com';
+```
+
+Look closely at that literal: `N'alice@example.com'` — the `N` prefix
+makes it an `NVARCHAR` literal, not `VARCHAR`. This single-character
+difference is enough to silently turn the index seek into a full scan.
+
+## Why: data type precedence, not column position
+
+When T-SQL compares two different types, it doesn't pick a side
+arbitrarily — [data type
+precedence](https://learn.microsoft.com/en-us/sql/t-sql/data-types/data-type-precedence-transact-sql)
+is a fixed ranking, and the **lower-precedence type always gets converted
+to the higher-precedence type**, regardless of which side of the
+comparison it's on. `NVARCHAR` outranks `VARCHAR` in that ranking. So
+`email = N'alice@example.com'` doesn't convert the literal down to
+`VARCHAR` to match the column — it converts the **column** up to
+`NVARCHAR` to match the literal. The comparison SQL Server actually
+performs is closer to:
+
+```sql
+WHERE CONVERT(NVARCHAR, email) = N'alice@example.com'
+```
+
+An index on `email` is an index on the raw `VARCHAR` values. A conversion
+wrapped around every row's value before comparing it isn't something that
+index can serve with a seek — the stored index values don't match what's
+being compared against anymore, so SQL Server has no choice but to
+convert and check every row: a full scan, same operator you'd get with no
+index at all.
+
+## Why this specific case is everywhere in real applications
+
+Nobody types `N'...'` into application code by hand very often. The real
+source is almost always **ADO.NET and the ORMs built on it**: a plain
+`.NET` `string` parameter, added without explicitly specifying
+`SqlDbType.VarChar`, defaults to `SqlDbType.NVarChar`. Entity Framework,
+Dapper with default settings, and hand-written `SqlParameter` code that
+doesn't override the type all produce this exact scenario — an `NVARCHAR`
+parameter compared against a `VARCHAR` column — on every single query
+that filters on that column, invisibly, from day one. The query runs. It
+even returns the right answer. It's just doing a scan every time instead
+of the seek the index was built for, and nothing in the error-free output
+hints at it.
+
+## Confirming it in a real plan
+
+The symptom in [an execution
+plan](/blog/reading-a-sql-server-execution-plan) is a scan where a seek
+looks like it should be possible, with the actual giveaway in the
+predicate: hover the scan operator and look for `CONVERT_IMPLICIT(nvarchar(100), [customers].[email], 0) = N'alice@example.com'`
+in the **Predicate** section — that function wrapped around the column
+name is the direct evidence, not a guess. Newer SQL Server versions
+sometimes also show a yellow warning icon directly on the plan for this
+specific pattern.
+
+## The fix: match the types, don't fight the index
+
+Three ways to fix it, from most to least preferred:
+
+**Fix the parameter type at the source** — the real fix, since it
+addresses every query against this column, not just one:
+
+```csharp
+// ADO.NET: force VarChar explicitly instead of letting it default to NVarChar
+command.Parameters.Add("@Email", SqlDbType.VarChar, 100).Value = email;
+```
+
+**Cast the literal/parameter explicitly in the query**, if you can't touch
+the calling code — casting the small, single value is far cheaper than
+forcing a conversion of every row:
+
+```sql
+SELECT customer_id FROM customers WHERE email = CAST(N'alice@example.com' AS VARCHAR(100));
+```
+
+**Change the column's type to match what callers actually send**, if
+`NVARCHAR` (Unicode) was genuinely always the right type for this data —
+sometimes the column, not the caller, is the one that should change.
+
+What doesn't work: casting the *column* instead of the literal —
+`WHERE CAST(email AS NVARCHAR(100)) = N'...'` still wraps a function around
+the indexed column and defeats the seek exactly the same way the implicit
+version did. The fix has to keep the indexed column bare on one side of
+the comparison.
+
+## Can't demonstrate this in the playground
+
+SQLite's type affinity system doesn't enforce or convert between string
+types the way T-SQL's data type precedence does — comparing `TEXT` values
+of different declared widths doesn't trigger an equivalent implicit
+conversion, so there's no live before/after to show here. Reproduce the
+`CONVERT_IMPLICIT` predicate and the scan-instead-of-seek plan against an
+actual SQL Server instance with a real `VARCHAR` column and an `N'...'`
+literal.
+
+<Related>
+- [Type coercion](/docs/core/type-coercion) — the general rules this post is one specific, high-impact instance of.
+- [Reading a SQL Server execution plan](/blog/reading-a-sql-server-execution-plan) — where to find the CONVERT_IMPLICIT predicate that confirms this diagnosis.
+- [Comparing a number to text silently matches nothing](/fix/comparing-incompatible-types) — a related but different type-mismatch trap, about wrong *results* instead of lost index usage.
+- [Indexes](/docs/performance/indexes) — what else can make an index unusable besides a type mismatch.
+</Related>

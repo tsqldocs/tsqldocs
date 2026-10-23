@@ -1,0 +1,107 @@
+---
+title: "The Halloween Problem: why your UPDATE's plan has a spool you didn't ask for"
+description: An UPDATE that modifies the same column it's filtering on has a real correctness hazard, named after the date it was discovered in 1976 — and the operator SQL Server adds to defend against it has a real, visible performance cost.
+date: "2026-10-23"
+tags: ["t-sql", "performance", "guide"]
+---
+
+The name has nothing to do with the bug — it's named for the date a group
+of IBM researchers found it, Halloween 1976, while working on query
+optimization. The problem itself is a real correctness hazard that every
+major relational engine has to defend against, and seeing SQL Server's
+defense against it in your own execution plans is common enough to be
+worth recognizing on sight.
+
+## The problem, concretely
+
+```sql
+UPDATE employees SET salary = salary * 1.1 WHERE salary < 30000;
+```
+
+Give everyone earning under $30,000 a 10% raise. Imagine the engine
+executes this by scanning rows in order of an index on `salary`, updating
+each matching row as it goes. An employee earning $28,000 gets updated to
+$30,800 — and if the scan is moving through the index in ascending order
+and that row's new, higher value now sorts *later* in the same index the
+scan is still traversing, the scan can encounter that same row **again**
+later in its pass, see $30,800, and — since that's still arguably within
+scope of a scan that started before the row moved — potentially evaluate
+it against the filter again or process it a second time. The row the
+`UPDATE` already handled gets revisited because the act of updating it
+moved it to a different position in the very structure being used to find
+rows to update.
+
+This isn't about `salary < 30000` specifically — it's the general shape:
+**any `UPDATE` (or `DELETE`/`INSERT ... SELECT`) that modifies a column
+which is also used, via an index, to identify which rows to process** has
+this hazard. A statement that should touch each qualifying row exactly
+once can, without protection, touch some rows more than once or skip
+others, depending on scan order and exactly when a row's new value moves
+it relative to where the scan currently is.
+
+## SQL Server's defense: a Spool
+
+Every major engine solves this the same fundamental way: fully separate
+"figure out which rows qualify" from "apply the change" into two distinct
+phases, so the second phase can't influence what the first phase is still
+in the middle of discovering. SQL Server's version of that separation
+shows up in an execution plan as a **Spool** operator (commonly an
+*Eager Table Spool*) sitting between the scan/seek that identifies
+qualifying rows and the actual `Update` operator — the spool fully
+materializes the set of rows to change into a temporary work area first,
+so the update phase that runs afterward is working from a frozen
+snapshot, not a structure it's actively modifying mid-scan.
+
+That protection has a real cost: the spool means writing every qualifying
+row's data to `tempdb` (or an in-memory work table for a small enough set)
+before the update even starts, which is genuine extra I/O and time that
+wasn't part of either "find the rows" or "update the rows" individually —
+it's purely the overhead of making those two phases safe to separate.
+
+## Recognizing it, and when it's actually needed
+
+Not every `UPDATE` gets a spool — SQL Server's optimizer only adds one
+when it determines the Halloween Problem is actually *possible* for this
+specific statement, which depends on whether the column being written is
+also reachable from the index path used to find the rows. An `UPDATE`
+filtering on `customer_id` while only writing to an unrelated `notes`
+column, for instance, has no Halloween Problem to defend against at all —
+no spool needed, because updating `notes` can't move a row relative to an
+index being scanned on `customer_id`.
+
+When you do see an unexpected spool in [an execution
+plan](/blog/reading-a-sql-server-execution-plan) for a straightforward
+`UPDATE` or `DELETE`, that's the sign: the column being written is also
+part of what the engine used to identify the rows to touch, directly or
+through an index. The spool isn't a bug or a sign something's configured
+wrong — it's correctness protection the optimizer determined this specific
+statement actually needs.
+
+## The one case worth actively avoiding it for
+
+For a large `UPDATE` where the extra `tempdb` write is a genuine,
+measured cost (not just a plan detail to understand, but something
+actually showing up in wait stats or I/O), restructuring the statement to
+avoid the hazard in the first place — doing the identification into an
+already-materialized temp table yourself, then updating from that, with
+no column overlap between "what identifies the row" and "what the update
+touches" in the final `UPDATE` statement — can let the optimizer skip the
+spool it would otherwise have to add. This is a real but narrow
+optimization: worth reaching for on a provably hot, large-scale batch
+update, not as a reflexive habit on every `UPDATE` statement.
+
+## Can't demonstrate this in the playground
+
+Recognizing an Eager Table Spool specifically requires a real SQL Server
+graphical execution plan — SQLite's planner and `EXPLAIN QUERY PLAN`
+output don't expose an equivalent named operator for this, even though
+SQLite (like every correct relational engine) also has to handle the
+underlying hazard internally somehow. See the actual spool by running the
+`salary`-style example above against a real SQL Server instance with a
+supporting index and an *Actual* execution plan turned on.
+
+<Related>
+- [Reading a SQL Server execution plan](/blog/reading-a-sql-server-execution-plan) — the operator vocabulary this post adds one specific icon to.
+- [UPDATE](/docs/dml/update) — the statement this hazard applies to, alongside DELETE and INSERT ... SELECT.
+- [Indexes](/docs/performance/indexes) — what makes a column "reachable from the index path" in the first place.
+</Related>
