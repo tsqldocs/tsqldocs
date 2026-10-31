@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { RssIcon } from 'lucide-react';
 import { getBlogPosts, blogSlug, formatBlogDate } from '@/lib/blog-source';
 
 export const metadata: Metadata = {
@@ -15,9 +16,18 @@ export default function BlogIndexPage() {
     <main className="flex flex-1 flex-col">
       <section className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-6 py-16 md:py-20">
         <div>
-          <h1 className="text-4xl font-semibold tracking-[-0.04em] text-fd-foreground md:text-5xl">
-            Blog
-          </h1>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h1 className="text-4xl font-semibold tracking-[-0.04em] text-fd-foreground md:text-5xl">
+              Blog
+            </h1>
+            <a
+              href="/rss.xml"
+              className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-fd-muted-foreground transition hover:text-fd-primary"
+            >
+              <RssIcon className="size-4" />
+              RSS
+            </a>
+          </div>
           <p className="mt-4 max-w-xl text-lg text-fd-muted-foreground">
             Longer writing that pulls the reference material together into one
             narrative, with the specifics linked back to the docs.

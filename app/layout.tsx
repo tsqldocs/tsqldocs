@@ -25,6 +25,9 @@ export const metadata: Metadata = {
   },
   description:
     'A practical T-SQL (SQL Server) reference for analytics and product teams: clauses, functions, joins, window patterns, and the edge cases that break production queries — with PostgreSQL, MySQL, and SQLite compared alongside where they diverge.',
+  alternates: {
+    types: { 'application/rss+xml': '/rss.xml' },
+  },
 };
 
 export default function Layout({ children }: LayoutProps<'/'>) {
