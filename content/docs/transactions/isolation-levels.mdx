@@ -74,6 +74,8 @@ engine) — it applies to the transaction that follows, not retroactively.
 <Related>
 - [BEGIN, COMMIT, ROLLBACK](/docs/transactions/basics) — the transaction these levels apply to.
 - [UPDATE](/docs/dml/update) — the "two concurrent updates to the same row" race mentioned there is exactly what isolation level and row locking govern.
+- [NOLOCK: what it actually risks beyond dirty reads](/blog/nolock-risks) — READ UNCOMMITTED's full risk surface, past the dirty-read tradeoff most people think they're accepting.
+- [Deadlocks in SQL Server](/blog/deadlocks-reading-the-graph) — reading the graph when two transactions' lock orders collide.
 </Related>
 
 ## Safety checklist

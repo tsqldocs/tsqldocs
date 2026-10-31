@@ -122,6 +122,7 @@ branching.
 - [UPSERT](/docs/dml/upsert) — the full syntax reference this post goes deeper than.
 - [Isolation levels](/docs/transactions/isolation-levels) — the general concurrency problem bug 2 is one instance of.
 - [Duplicate key / unique constraint violation](/fix/duplicate-key-unique-violation) — what the failed half of a lost race actually looks like.
+- [Deadlocks in SQL Server](/blog/deadlocks-reading-the-graph) — a different concurrency hazard (a cycle, not a race) with its own specific fix.
 </Related>
 
 <TryPlayground>Run the ON CONFLICT example above twice with different stock values and confirm it accumulates correctly both times, with no read-then-act step you have to reason about.</TryPlayground>

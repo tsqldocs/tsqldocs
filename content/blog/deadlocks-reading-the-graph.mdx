@@ -1,0 +1,141 @@
+---
+title: "Deadlocks in SQL Server: reading the graph instead of guessing"
+description: Msg 1205 names a victim, not a cause. The deadlock graph has the actual two queries, the actual two resources, and the actual order they were acquired in — everything needed to fix it instead of just rerunning it.
+date: "2026-10-31"
+tags: ["t-sql", "transactions", "troubleshooting"]
+---
+
+```
+Msg 1205, Level 13, State 51
+Transaction (Process ID 61) was deadlocked on lock resources with another
+process and has been chosen as the deadlock victim. Rerun the transaction.
+```
+
+The error tells you *that* a deadlock happened and *which* session got
+killed to resolve it — it doesn't tell you what the other session was
+doing, which resources were actually involved, or why. That information
+exists; it's in the deadlock graph, and reading it directly is the
+difference between actually fixing the cause and just catching the error
+and retrying forever.
+
+## The shape underneath almost every deadlock
+
+Two sessions, two resources, opposite acquisition order:
+
+```sql
+-- Session A
+BEGIN TRANSACTION;
+UPDATE customers SET country = 'CA' WHERE customer_id = 3;  -- locks customers
+UPDATE orders SET status = 'reviewed' WHERE customer_id = 3; -- now wants orders
+COMMIT;
+
+-- Session B, running concurrently
+BEGIN TRANSACTION;
+UPDATE orders SET amount = amount + 10 WHERE customer_id = 3;  -- locks orders
+UPDATE customers SET name = 'Acme Corp Inc' WHERE customer_id = 3; -- now wants customers
+COMMIT;
+```
+
+Session A holds a lock on `customers` and waits for `orders`. Session B
+holds a lock on `orders` and waits for `customers`. Neither can proceed;
+neither will ever release what the other is waiting for. SQL Server
+detects this (by default, checking every 5 seconds, faster if deadlocks
+are frequent) and picks one session as the **victim** — rolls its
+transaction back, raises 1205 in that session, and lets the other one
+proceed.
+
+## Victim selection isn't random
+
+Two things decide who loses, checked in this order:
+
+1. **`DEADLOCK_PRIORITY`**, if either session set it explicitly
+   (`SET DEADLOCK_PRIORITY LOW` / `NORMAL` / `HIGH`, or a number from -10
+   to 10) — the lower-priority session is chosen as the victim regardless
+   of anything else.
+2. **Rollback cost**, when priorities are equal — SQL Server estimates
+   which transaction is cheaper to undo and kills that one, on the theory
+   that a cheap-to-rollback transaction wastes less work than killing the
+   more expensive one.
+
+Neither of these has anything to do with which session is "more
+important" from the application's point of view — if that matters, it has
+to be told explicitly via `DEADLOCK_PRIORITY`, not left to the default.
+
+## Actually capturing the graph
+
+The cheapest way to start seeing deadlock graphs without any extra setup
+is Extended Events' built-in `system_health` session, running by default
+on every SQL Server instance since 2008 — it already captures every
+deadlock whether or not anyone's watching:
+
+```sql
+SELECT XEvent.query('.') AS deadlock_graph
+FROM (
+  SELECT CAST(target_data AS XML) AS TargetData
+  FROM sys.dm_xe_session_targets st
+  JOIN sys.dm_xe_sessions s ON s.address = st.event_session_address
+  WHERE s.name = 'system_health'
+) AS Data
+CROSS APPLY TargetData.nodes('RingBufferTarget/event[@name="xml_deadlock_report"]') AS XEventData(XEvent);
+```
+
+For a deadlock you can reproduce on demand instead of hunting through
+history, a dedicated Extended Events session capturing just
+`xml_deadlock_report` (or the older `trace flag 1222` to the error log) is
+more direct.
+
+## Reading the graph: the two halves
+
+The deadlock graph XML has two kinds of node worth looking at directly
+rather than parsing by hand in SSMS's graphical viewer first:
+
+- **`<process>`** nodes — one per session involved, each containing the
+  actual SQL text that was executing (`<inputbuf>` or the statement
+  itself), the session's `isolationlevel`, and `<frame>` entries showing
+  the call stack if it came from inside a stored procedure. This answers
+  "what was each side actually doing," which the plain 1205 error never
+  tells you.
+- **`<resource-list>`** — the specific objects involved (`associatedObjectId`,
+  which resolves to a table/index via `OBJECT_NAME`), the lock mode each
+  session held (`owner` entries) versus what each was waiting for
+  (`waiter` entries). This is the direct evidence of the "A holds X wants
+  Y, B holds Y wants X" cycle — not an inference from the error message,
+  the actual resources.
+
+SSMS's graphical deadlock graph viewer (open the `.xdl` file, or right-click
+a captured graph in Extended Events) draws this as two boxes connected by
+arrows showing exactly this cycle, which is often faster to read visually
+than the raw XML — but the XML is what to reach for when you need to
+search across many captured deadlocks for a pattern, since the graphical
+view only shows one at a time.
+
+## The actual fix: consistent access order
+
+Once the two queries and their lock order are visible, the fix for the
+classic opposite-order case above is almost always the same: make every
+transaction that touches both `customers` and `orders` acquire them in
+the *same* order, every time — Session B's statements reordered to touch
+`customers` first, matching Session A, removes the cycle entirely, since
+two sessions each waiting on the *next* resource in the same fixed order
+can never form a cycle. Where a consistent order genuinely isn't
+practical, the fallback is a narrower transaction (hold locks for less
+time, touching fewer rows) or an explicit `HOLDLOCK`/serializable
+isolation on the smaller of the two operations — but reordering is the
+fix that removes the deadlock possibility structurally, rather than just
+shrinking the window it can happen in.
+
+## Can't demonstrate this in the playground
+
+Deadlock detection requires two genuinely concurrent sessions and
+SQL Server's lock manager — the SQLite sandbox here runs single-statement
+queries with no concurrent session model to deadlock at all. Reproduce
+the two-session scenario above in two separate SSMS query windows against
+a real SQL Server instance; run both `UPDATE`s up to the second statement
+in each session (don't commit), then let both proceed — one window will
+show the 1205 error, the other will complete normally.
+
+<Related>
+- [Isolation levels](/docs/transactions/isolation-levels) — what a transaction can see of another one running concurrently, the broader topic this post's narrower deadlock-diagnosis angle sits inside.
+- [Transactions basics](/docs/transactions/basics) — BEGIN/COMMIT/ROLLBACK fundamentals.
+- [Why T-SQL's MERGE has a bad reputation](/blog/merge-concurrency-bugs) — a different concurrency hazard (a race, not a deadlock) with its own specific fix.
+</Related>

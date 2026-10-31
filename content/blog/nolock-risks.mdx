@@ -1,0 +1,113 @@
+---
+title: "NOLOCK: what it actually risks beyond dirty reads"
+description: Everyone reaches for NOLOCK knowing it can show uncommitted data. Fewer know it can also show you the same row twice, skip a row entirely, or throw an error mid-scan — and none of those are the dirty-read tradeoff people think they're accepting.
+date: "2026-10-31"
+tags: ["t-sql", "transactions", "performance"]
+---
+
+`WITH (NOLOCK)` (equivalent to running the statement under `READ
+UNCOMMITTED`) is reached for constantly in T-SQL — usually as a reflexive
+"this query is blocked / this is a reporting query, slap NOLOCK on it" fix
+— on the understood tradeoff of "I might see a row that hasn't committed
+yet." That tradeoff is real, and it's also not the whole story. The part
+that doesn't get mentioned nearly as often: `NOLOCK` can make a single
+scan return a row **twice**, skip a row **entirely**, or fail outright —
+none of which is "seeing uncommitted data," and none of which most people
+signing off on `NOLOCK` think they're agreeing to.
+
+## What dirty reads actually are (the risk everyone knows)
+
+```sql
+SELECT status FROM orders WITH (NOLOCK) WHERE order_id = 101;
+```
+
+If another session has an open, uncommitted transaction that changed this
+row's `status` and hasn't committed or rolled back yet, this query can
+return that uncommitted value — including a value that the other
+transaction later rolls back, meaning you read something that, from the
+database's actual committed history, never happened. This is the
+well-known risk, and for a lot of reporting/dashboard use cases, it's a
+genuinely acceptable tradeoff: slightly-possibly-stale numbers in exchange
+for not blocking on (and not being blocked by) writers.
+
+## What's less well known: duplicate and missing rows
+
+`NOLOCK` doesn't just skip taking locks on the rows it reads — it also
+skips the locks that would normally prevent the *data it's scanning*
+from moving around underneath it. If a concurrent write causes a **page
+split** (SQL Server reorganizing a full data page into two to make room
+for a new row) while a `NOLOCK` scan is in progress, rows can move to a
+different physical location mid-scan. Depending on whether that
+relocation happens ahead of or behind the scan's current position:
+
+- A row that moves **behind** where the scan has already passed can be
+  **read again** when the scan reaches its new location — the same
+  logical row, counted twice in an aggregate, returned twice in a result
+  set.
+- A row that moves **ahead** of where the scan currently is, into territory
+  the scan has already passed, can be **skipped entirely** — never read
+  at all, with nothing in the query's output indicating a row went
+  missing.
+
+Neither of these is a dirty read. The data involved might be fully
+committed, unrelated to any transaction you'd think to worry about — the
+problem is purely that the scan's own position and the table's physical
+layout moved out of sync with each other, something `NOLOCK` specifically
+allows to happen by skipping the locks that would otherwise prevent it.
+
+## It can also just error
+
+Less common, but documented: a `NOLOCK` scan can encounter data that's
+moved or been deallocated in a way the scan can't reconcile, and raise an
+error mid-query (classically surfaced as an 601-family error referencing
+being unable to continue a scan due to data movement) rather than
+silently producing a wrong result. From an application's point of view
+this is almost the better outcome — a visible failure instead of quietly
+wrong numbers — but it means `NOLOCK` queries need real error handling
+around them regardless, not just an assumption that they'll always
+succeed, just maybe with stale data.
+
+## Where this actually matters vs. where it doesn't
+
+**Low risk**: a mostly-static or append-only table, or a report running
+during a quiet window with little concurrent write activity — fewer page
+splits in flight means fewer chances for a row to move mid-scan.
+
+**Real risk**: a financial aggregate, inventory count, or anything where
+"exactly once, every row" is load-bearing, run against a table under
+active concurrent write load — a `SUM()` that's occasionally double- or
+under-counting a handful of rows, with no error and no indication
+anything was wrong, is a worse failure mode than the dirty-read case most
+people think they're signing up for.
+
+## The alternatives, when NOLOCK's actual tradeoff isn't acceptable
+
+- **`READ COMMITTED SNAPSHOT`** (database-level setting) — readers see a
+  transactionally-consistent snapshot as of the start of their statement,
+  with no dirty reads *and* no blocking against concurrent writers, at the
+  cost of `tempdb` version-store overhead. For a database where write
+  concurrency and reporting both matter, this is usually the better
+  default than reaching for `NOLOCK` query-by-query.
+- **A narrower, indexed query** that reduces lock duration and scope in
+  the first place, so there's less to block on and NOLOCK's tradeoffs
+  become unnecessary rather than worked around.
+- **Accept the tradeoff explicitly, with eyes open** — `NOLOCK` is a
+  legitimate choice for genuinely low-stakes reporting against a
+  low-write-volume table; the point here isn't "never use it," it's
+  "know what it actually risks before reaching for it as a reflex."
+
+## Can't demonstrate this in the playground
+
+Reproducing a `NOLOCK` duplicate/missing row requires a concurrent writer
+causing a real page split during an in-flight scan under SQL Server's
+specific storage engine behavior — SQLite has no equivalent locking mode
+and no concurrent-session model in this single-connection sandbox to
+demonstrate the race against. This one has to be taken on the documented
+behavior, or reproduced against a real SQL Server instance under genuine
+concurrent write load.
+
+<Related>
+- [Isolation levels](/docs/transactions/isolation-levels) — READ UNCOMMITTED in context alongside the other three standard isolation levels.
+- [Deadlocks in SQL Server](/blog/deadlocks-reading-the-graph) — the concurrency problem NOLOCK is usually reached for to avoid in the first place.
+- [Transactions basics](/docs/transactions/basics) — what a transaction and its isolation level actually control.
+</Related>

@@ -1,0 +1,128 @@
+---
+title: "@@IDENTITY vs SCOPE_IDENTITY vs IDENT_CURRENT: only one is usually safe"
+description: Three different functions all answer "what identity value was just generated" with three genuinely different scoping rules — and the two that are easiest to reach for by habit are the two most likely to hand you the wrong row's ID.
+date: "2026-10-31"
+tags: ["t-sql", "troubleshooting"]
+---
+
+After an `INSERT` into a table with an `IDENTITY` column, getting the
+generated value back is a near-universal need — the new row's ID, to use
+in a follow-up insert into a child table, or to return to calling code.
+T-SQL has three different functions that all claim to answer this, and
+they scope "the last identity value" three genuinely different ways. Two
+of the three are a real, documented source of silently-wrong IDs.
+
+## The three, and what each one actually scopes to
+
+- **`@@IDENTITY`** — the last identity value generated in the current
+  **session**, across **any scope** — any table, triggered by anything
+  that ran as part of this connection, including a trigger.
+- **`SCOPE_IDENTITY()`** — the last identity value generated in the
+  current session **and** the current **scope** (the specific stored
+  procedure, trigger, or batch that's executing) — triggers and
+  other scopes don't count.
+- **`IDENT_CURRENT('table_name')`** — the last identity value generated
+  for a **specific named table**, in **any session**, **any scope** —
+  not limited to your connection at all.
+
+## Why @@IDENTITY is the dangerous default
+
+It reads like the obvious choice — short name, no arguments, "the"
+identity value — and it's wrong exactly when a table has a trigger that
+also inserts into a different table with its own `IDENTITY` column:
+
+```sql
+CREATE TABLE orders (order_id INT IDENTITY PRIMARY KEY, customer_id INT);
+CREATE TABLE order_audit (audit_id INT IDENTITY PRIMARY KEY, order_id INT, logged_at DATETIME DEFAULT GETDATE());
+
+CREATE TRIGGER trg_orders_audit ON orders
+AFTER INSERT AS
+BEGIN
+  INSERT INTO order_audit (order_id) SELECT order_id FROM inserted;
+END;
+
+INSERT INTO orders (customer_id) VALUES (3);
+SELECT @@IDENTITY AS via_at_identity, SCOPE_IDENTITY() AS via_scope_identity;
+```
+
+`@@IDENTITY` returns the `audit_id` the trigger just generated in
+`order_audit` — the *last* identity value in the session, which is the
+trigger's, not yours — while `SCOPE_IDENTITY()` correctly returns the
+`order_id` from the actual `INSERT` statement that ran in your scope. The
+trigger doesn't have to be something you wrote or even know about for
+this to bite — a trigger added to the table months later by someone else,
+for an unrelated audit/logging purpose, silently changes what
+`@@IDENTITY` returns from every existing piece of code that uses it,
+with no error and no warning that the value being returned now means
+something different than it used to.
+
+## Why IDENT_CURRENT is dangerous in a different way
+
+`IDENT_CURRENT('orders')` doesn't care about session or scope at all — it
+returns the table's current identity value regardless of who generated
+it:
+
+```sql
+INSERT INTO orders (customer_id) VALUES (3);
+-- another session's INSERT happens here, concurrently, before the next line runs
+SELECT IDENT_CURRENT('orders') AS via_ident_current;  -- might be THEIR row's ID, not yours
+```
+
+Under real concurrent load, another session's insert landing between your
+`INSERT` and your call to `IDENT_CURRENT` means you get their ID, not
+yours — a correctness bug that only shows up under concurrency, making it
+exactly the kind of thing that passes every single-user test and fails
+intermittently in production.
+
+## When IDENT_CURRENT is actually the right one
+
+`IDENT_CURRENT`'s session-and-scope-independence is a bug when you want
+"the ID *I* just generated" and a feature when you genuinely want "what
+is this table's identity counter at right now, from any source" —
+diagnostics, a one-off check in SSMS with no insert of your own involved,
+or deliberately observing state across sessions. It's the right tool for
+a narrow set of cases; the mistake is reaching for it (or `@@IDENTITY`) by
+habit for the much more common "give me back the row I just inserted"
+need, where `SCOPE_IDENTITY()` is almost always correct.
+
+## The practical rule
+
+Default to `SCOPE_IDENTITY()` for "give me the ID of the row I just
+inserted" — it's immune to the trigger problem that breaks `@@IDENTITY`
+and immune to the concurrency problem that breaks `IDENT_CURRENT`,
+because it's scoped to exactly the statement that just ran, in exactly
+your session, nothing else. Reach for the other two only when their
+specific, different scoping is actually what the situation calls for —
+not as a shorter-to-type substitute.
+
+## The OUTPUT clause sidesteps the whole question
+
+For an `INSERT` where capturing the generated ID matters enough to think
+hard about this, [`OUTPUT`](/docs/dml/output-clause) returns it directly
+from the statement that created it — no separate function call, no
+ambiguity about scope at all, since there's no second statement for a
+trigger or a concurrent session to interfere with in between:
+
+```sql
+INSERT INTO orders (customer_id)
+OUTPUT inserted.order_id
+VALUES (3);
+```
+
+For a single-row insert where the generated ID is needed immediately,
+this is the cleanest answer to the whole category of problem above.
+
+## Can't demonstrate this in the playground
+
+`IDENTITY` columns with this specific trigger-interaction and
+multi-session behavior, and the three functions themselves, are T-SQL
+specific — SQLite's `INTEGER PRIMARY KEY` auto-increment behavior and
+`last_insert_rowid()` function don't have an equivalent trigger-scoping
+distinction to demonstrate the `@@IDENTITY` problem against. Reproduce
+the trigger example above against a real SQL Server instance to see the
+two functions actually diverge.
+
+<Related>
+- [OUTPUT clause](/docs/dml/output-clause) — capturing a generated ID directly from the INSERT that created it, sidestepping this entire question.
+- [INSERT](/docs/dml/insert) — the statement these functions are usually called right after.
+</Related>
