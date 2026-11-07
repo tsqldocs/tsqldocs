@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {
   ArrowLeftRightIcon,
   ArrowRightIcon,
+  ArrowUpDownIcon,
   BookOpenIcon,
   GaugeIcon,
   ListIcon,
@@ -81,6 +82,12 @@ const sections = [
     title: 'Cheat sheet',
     text: 'Every clause, join, and function on one page — syntax and a one-line reminder, nothing else.',
     href: '/cheatsheet',
+  },
+  {
+    icon: ArrowUpDownIcon,
+    title: 'Type precedence checker',
+    text: "Pick two T-SQL types and see which one wins — straight from Microsoft's own table, with the index-killing cases flagged.",
+    href: '/tools/type-precedence',
   },
 ];
 
