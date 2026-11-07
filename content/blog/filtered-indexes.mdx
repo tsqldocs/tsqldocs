@@ -1,0 +1,139 @@
+---
+title: "Filtered indexes: the index that's smaller than your WHERE clause"
+description: Most indexes cover every row in the table whether a query needs them or not. A filtered index only covers the rows that match a condition you choose — smaller, faster to maintain, and often a better fit than the composite index it replaces.
+date: "2026-11-07"
+tags: ["t-sql", "performance"]
+---
+
+[Indexes](/docs/performance/indexes) covers the standard case — an index
+on a column, built across every row in the table. T-SQL (and Postgres,
+which has the same feature under the name "partial index") also supports
+building an index across only the rows that match a condition you specify
+up front. For a table where most queries only ever care about a narrow
+slice of it, that distinction is a real, often large, performance and
+storage win.
+
+## The syntax
+
+```sql
+CREATE INDEX ix_orders_pending
+ON orders(order_date)
+WHERE status = 'pending';
+```
+
+This index contains **only** rows where `status = 'pending'` — not an
+index on every row that happens to be sorted so pending rows are easy to
+find, an index that genuinely does not include the other rows at all.
+SQLite supports the identical syntax (Postgres too, under the name
+"partial index"), so the effect on the query plan is directly visible
+here — a query whose `WHERE` matches the filter gets a real `SEARCH`:
+
+<SqlRunner query={`CREATE INDEX ix_orders_pending ON orders(order_date) WHERE status = 'pending';
+
+EXPLAIN QUERY PLAN
+SELECT * FROM orders WHERE status = 'pending' AND order_date > '2026-01-01';`} />
+
+The exact same table, filtered on `status = 'paid'` instead — outside what
+the index covers, so it's not even a candidate:
+
+<SqlRunner query={`EXPLAIN QUERY PLAN
+SELECT * FROM orders WHERE status = 'paid';`} />
+
+`SEARCH ... USING INDEX` versus a plain `SCAN` — the filtered index is
+invisible to any query it wasn't built for, exactly as designed.
+
+## Where this actually wins
+
+**A status column with a heavily skewed distribution.** If 2% of orders
+are `'pending'` and 98% are `'paid'`/`'cancelled'`/`'refunded'`, and the
+pending ones are what every operational query actually filters on, a
+filtered index on just that 2% is both much smaller (less disk, less
+memory to cache, faster to maintain on every write) and more
+*selective* — the optimizer knows immediately that seeking into it can
+only ever return a small slice of the table, without needing a column on
+the far side of a composite index to narrow things further.
+
+**Excluding `NULL`s from a mostly-`NULL` column:**
+
+```sql
+CREATE INDEX ix_orders_cancelled_at
+ON orders(cancelled_at)
+WHERE cancelled_at IS NOT NULL;
+```
+
+If 95% of orders have never been cancelled, indexing every one of those
+`NULL`s is pure overhead for a column that's only ever queried for the
+5% that actually have a value.
+
+**Enforcing uniqueness on a condition, not the whole column** — this is
+the one filtered indexes do that a regular unique constraint structurally
+can't:
+
+```sql
+CREATE UNIQUE INDEX ux_customers_active_email
+ON customers(email)
+WHERE is_active = 1;
+```
+
+A plain `UNIQUE` constraint on `email` would reject a second row with the
+same address even if the first one is a soft-deleted/inactive account —
+this filtered version allows duplicate emails among inactive rows while
+still enforcing true uniqueness among active ones, a rule no single
+unqualified unique constraint can express at all:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_customers;
+CREATE TABLE scratch_customers (customer_id INTEGER PRIMARY KEY, email TEXT, is_active INTEGER);
+CREATE UNIQUE INDEX ux_customers_active_email ON scratch_customers(email) WHERE is_active = 1;
+
+-- two INACTIVE rows with the same email: allowed
+INSERT INTO scratch_customers VALUES (1, 'a@x.com', 0);
+INSERT INTO scratch_customers VALUES (2, 'a@x.com', 0);
+SELECT * FROM scratch_customers;`} />
+
+The same email a second time, but both rows active, correctly fails:
+
+<SqlRunner query={`INSERT INTO scratch_customers VALUES (3, 'b@x.com', 1);
+INSERT INTO scratch_customers VALUES (4, 'b@x.com', 1);`} />
+
+## The part that's easy to miss: queries have to match the filter
+
+A filtered index only gets considered by the optimizer when the query's
+own `WHERE` clause can be proven to be a subset of the index's filter —
+not just related to it, a provable subset:
+
+```sql
+-- matches the filtered index's condition exactly: eligible
+SELECT * FROM orders WHERE status = 'pending' AND order_date > '2026-01-01';
+
+-- status = 'paid' falls outside WHERE status = 'pending' entirely: index not used
+SELECT * FROM orders WHERE status = 'paid';
+
+-- can't be proven as a subset even though it overlaps: often not used
+SELECT * FROM orders WHERE status IN ('pending', 'paid');
+```
+
+That last case is the one that surprises people — a parameterized query
+built with `status = @Status` where `@Status` might be `'pending'` at
+runtime still won't use the filtered index at compile time, because the
+optimizer has to decide whether the index applies *before* knowing what
+`@Status` actually is. A filtered index is at its best behind a query
+whose `WHERE` clause is written with the exact same literal condition the
+index was filtered on, not a parameter or broader condition that merely
+happens to overlap with it some of the time.
+
+## What it costs
+
+A filtered index isn't free just because it's small — every `INSERT`,
+`UPDATE`, or `DELETE` that touches a row matching the filter still has to
+maintain the index, same as any other. The savings are in index *size*
+(less to scan, less to cache, faster rebuilds) and *selectivity*
+(fewer false candidates for the optimizer to consider), not in avoiding
+write overhead on the rows it actually covers.
+
+<Related>
+- [Indexes](/docs/performance/indexes) — the standard, unfiltered case this one specializes.
+- [Reading a SQL Server execution plan](/blog/reading-a-sql-server-execution-plan) — confirming a filtered index actually got chosen, not silently skipped for falling outside its filter.
+- [Duplicate key / unique constraint violation](/fix/duplicate-key-unique-violation) — what a plain, unfiltered UNIQUE constraint enforces instead.
+</Related>
+
+<TryPlayground>Try `WHERE status = 'refunded'` against the first index above and confirm it falls back to a scan, same as `'paid'` did.</TryPlayground>

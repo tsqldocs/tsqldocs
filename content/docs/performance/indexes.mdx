@@ -123,6 +123,8 @@ indexed column is compared bare, or build the index on the expression itself
 - [Reading query plans](/docs/performance/explain) — how to check whether an index actually got used, on any engine.
 - [WHERE](/docs/core/where) — the filters an index needs to match to be useful.
 - [Type coercion](/docs/core/type-coercion) — an implicit type mismatch on an indexed column is another common way to silently lose index usage.
+- [Filtered indexes](/blog/filtered-indexes) — an index covering only a chosen slice of the table instead of every row.
+- [Columnstore indexes](/blog/columnstore-indexes) — a completely different storage layout, for aggregation instead of row lookups.
 </Related>
 
 ## Safety checklist

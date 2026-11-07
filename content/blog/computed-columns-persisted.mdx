@@ -1,0 +1,140 @@
+---
+title: "Computed columns and PERSISTED: indexing a column that isn't really there"
+description: A computed column is just an expression with a name — until PERSISTED makes it real storage, which is the one thing that turns "convenient" into "indexable."
+date: "2026-11-07"
+tags: ["t-sql", "performance"]
+---
+
+A computed column lets a table carry a derived value without an
+application (or a trigger) having to maintain it by hand — defined once,
+as an expression, and evaluated automatically. The detail that actually
+matters for anything beyond convenience: by default, that expression is
+recomputed **on every read**, not stored anywhere, and an index can't be
+built on something that doesn't physically exist yet.
+
+## The basic form
+
+```sql
+CREATE TABLE orders (
+  order_id    INT PRIMARY KEY,
+  amount      DECIMAL(10,2),
+  tax_rate    DECIMAL(4,3),
+  total       AS (amount * (1 + tax_rate))
+);
+```
+
+`total` isn't a column with data in it — every time a query reads it, SQL
+Server evaluates `amount * (1 + tax_rate)` fresh, for that row, at read
+time. No storage used, always consistent with the current values of
+`amount` and `tax_rate`, and genuinely cheap for a simple arithmetic
+expression read occasionally. SQLite's own generated-column syntax
+(`GENERATED ALWAYS AS (...) STORED` for T-SQL's `PERSISTED`, or `VIRTUAL`
+for the non-persisted default) is close enough to run the same idea live:
+
+<SqlRunner query={`DROP TABLE IF EXISTS scratch_orders;
+CREATE TABLE scratch_orders (
+  order_id INTEGER PRIMARY KEY,
+  amount   REAL,
+  tax_rate REAL,
+  total    REAL GENERATED ALWAYS AS (amount * (1 + tax_rate)) VIRTUAL
+);
+INSERT INTO scratch_orders (order_id, amount, tax_rate) VALUES (1, 100, 0.08);
+
+SELECT order_id, amount, total FROM scratch_orders;`} />
+
+Change `amount` and the derived value changes with it on the next read —
+nothing to keep in sync by hand:
+
+<SqlRunner query={`UPDATE scratch_orders SET amount = 200 WHERE order_id = 1;
+SELECT order_id, amount, total FROM scratch_orders;`} />
+
+## Where the default behavior stops being free
+
+Two things change that calculus:
+
+**The expression is actually expensive**, and it's read often — recomputing
+a non-trivial calculation (a string manipulation, a multi-column
+conditional, anything beyond simple arithmetic) on every single row of
+every single read adds up in a way a stored value wouldn't.
+
+**You want to index it.** This is the harder stop, not a soft
+performance tradeoff: SQL Server **cannot build a regular index on a
+non-persisted computed column** at all, for the ones that aren't provably
+deterministic and precise the same way every time — which most
+non-trivial expressions aren't, by the engine's own strict rules.
+
+## PERSISTED: make it real
+
+```sql
+CREATE TABLE orders (
+  order_id    INT PRIMARY KEY,
+  amount      DECIMAL(10,2),
+  tax_rate    DECIMAL(4,3),
+  total       AS (amount * (1 + tax_rate)) PERSISTED
+);
+
+CREATE INDEX ix_orders_total ON orders(total);
+```
+
+`PERSISTED` tells SQL Server to actually compute the value once, at write
+time, and store it on the row like any other column — recalculated only
+when `amount` or `tax_rate` changes, not on every read. Once it's real
+storage, it's indexable exactly like any other column, and reads stop
+paying the recomputation cost entirely.
+
+## The tradeoff this makes explicit
+
+A persisted computed column moves the cost from **read time to write
+time** — every `INSERT`/`UPDATE` that touches `amount` or `tax_rate` now
+also recomputes and stores `total`, and if it's indexed, maintains that
+index too. For a table read far more often than written (the common
+case), this is a clear win. For a write-heavy table where `total` is
+rarely actually queried, persisting it is pure overhead with no payoff —
+the same "where does the cost actually belong" question that comes up
+with [indexes generally](/docs/performance/indexes), just one layer
+earlier, at the column itself rather than at an index on top of it.
+
+## Determinism is the real gate, not a style preference
+
+Not every expression can be `PERSISTED`, and the rule isn't arbitrary:
+the expression has to be **deterministic** (the same inputs always
+produce the exact same output) and, for certain cases, **precise**
+(no floating-point imprecision in the computation). `GETDATE()` inside a
+computed column, for instance, can never be `PERSISTED` — it's a
+different value every time by definition, so there's nothing stable to
+store. A `CAST` through a `FLOAT` intermediate step can also block
+persistence, since floating-point arithmetic isn't guaranteed bit-identical
+across every possible execution path. When `PERSISTED` is rejected, that
+determinism violation is the reason — not a limit on the kind of logic
+allowed, a guarantee that what gets stored can always be trusted to equal
+what the expression would compute fresh.
+
+## Checking what's actually persisted and indexed
+
+```sql
+SELECT name, is_persisted, is_computed
+FROM sys.computed_columns
+WHERE object_id = OBJECT_ID('orders');
+```
+
+Worth checking directly rather than assuming — a computed column added
+long ago by someone else, or one that silently failed to persist due to a
+later change in the underlying columns' types, behaves identically in
+every `SELECT` either way; only this system view (or trying to build an
+index on it) reveals which case you're actually in.
+
+## What doesn't carry over to the playground
+
+The basic computed-column behavior above is genuinely live here — SQLite's
+`VIRTUAL`/`STORED` generated columns work the same way T-SQL's
+default/`PERSISTED` pair does. What's SQL-Server-specific and stays
+static reference: the exact determinism/precision rules that gate
+`PERSISTED` (SQLite has its own, different restrictions), and
+`sys.computed_columns` as a system catalog — SQLite's equivalent
+(`PRAGMA table_info`) doesn't expose a `STORED` vs `VIRTUAL` flag the same
+direct way. Confirm `is_persisted` against a real SQL Server instance.
+
+<Related>
+- [Indexes](/docs/performance/indexes) — what makes any column, computed or not, worth indexing in the first place.
+- [Filtered indexes](/blog/filtered-indexes) — another index that's smaller/different than the default, for a different reason.
+</Related>

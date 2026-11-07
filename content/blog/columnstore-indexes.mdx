@@ -1,0 +1,110 @@
+---
+title: "Columnstore indexes: when row-by-row is the wrong question"
+description: Every index covered elsewhere on this site stores data row by row, because that's the right layout for finding a handful of specific rows fast. A columnstore index stores the same table column by column instead — wrong for that job, and dramatically right for a different one.
+date: "2026-11-07"
+tags: ["t-sql", "performance"]
+---
+
+A clustered index, a nonclustered index, [a filtered
+index](/blog/filtered-indexes) — all of them, under the hood, are
+**rowstore**: each row's full set of values stored together, because the
+question they're built to answer is "find me this specific row (or a
+small number of them) fast." A columnstore index answers a structurally
+different question — "summarize millions of rows" — by physically storing
+each *column's* values together instead, and that single layout change is
+why it exists as a separate feature rather than just another index type
+sitting next to the others.
+
+## Why column-by-column wins for aggregation
+
+```sql
+SELECT category_id, SUM(sales)
+FROM product_sales
+GROUP BY category_id;
+```
+
+A rowstore table answering this has to read every row in full — all of
+`product_id`, `category_id`, `product_name`, `sales` — just to get at the
+one or two columns this query actually needs, discarding the rest after
+reading it off disk/memory. A columnstore index holding the same table
+stores `sales` values contiguously, separate from `category_id`, separate
+from the columns this particular query never touches at all — so scanning
+just the two relevant columns reads a fraction of the data a rowstore
+scan would, before getting to compression (column-oriented data compresses
+far better than row-oriented data, since adjacent values in the same
+column tend to be far more similar to each other than adjacent values
+across different columns in the same row) and **batch mode execution**
+(processing rows in chunks of roughly 900 at a time instead of one at a
+time — the same batch-mode concept [mentioned in the scalar UDF
+post](/blog/scalar-udf-performance) as dramatically faster than row mode
+for large scans).
+
+## Why it's the wrong choice for the opposite question
+
+```sql
+SELECT * FROM orders WHERE order_id = 4815;
+```
+
+Finding one specific row by its key is exactly backwards for a
+column-by-column layout — reconstructing a single full row means reading
+from every column's separately-stored segment and stitching them back
+together, instead of the one contiguous read a rowstore index needs for
+the same lookup. A columnstore index on a table that's mostly queried
+this way is actively worse than a normal rowstore index, not neutral —
+this is a real either/or tradeoff, not a strictly-better upgrade.
+
+## The practical split: OLTP vs. analytical
+
+This maps directly onto the two kinds of workload a database usually
+serves, which is why the decision is normally made at the table (or even
+the specific index) level rather than site-wide:
+
+- **OLTP-shaped access** — find/insert/update individual rows by key,
+  transactional, high-frequency, small result sets. Rowstore.
+- **Analytical/reporting-shaped access** — aggregate across large
+  swaths of history, `GROUP BY`, `SUM`/`AVG`/`COUNT` over millions of
+  rows, relatively infrequent but each query touches a lot of data.
+  Columnstore.
+
+A table that's genuinely both (written transactionally all day,
+aggregated for reporting all night) can have a **nonclustered
+columnstore index** layered on top of its normal rowstore clustered
+index — SQL Server maintains both representations, so OLTP writes keep
+using the rowstore path while analytical queries can be routed to the
+columnstore one, at the cost of maintaining two physical copies of the
+data.
+
+## The clustered columnstore case
+
+For a table that's *purely* analytical — a fact table in a data
+warehouse, an append-mostly history table nobody does point lookups
+against — the clustered columnstore index replaces the table's normal
+storage entirely rather than sitting alongside it:
+
+```sql
+CREATE CLUSTERED COLUMNSTORE INDEX cci_sales_history ON sales_history;
+```
+
+No separate rowstore copy to maintain, maximum compression, maximum
+analytical scan speed — and now genuinely poor at single-row lookups,
+since there's no rowstore structure left at all to fall back on for
+that case. This is the right call specifically for a table where that
+tradeoff is acceptable, not a general-purpose upgrade over a normal
+clustered index.
+
+## Can't demonstrate this in the playground
+
+Columnstore storage, batch-mode execution, and the compression behavior
+this post is actually about are specific to SQL Server's storage engine —
+SQLite has no column-oriented storage mode or batch execution mode to
+compare against; its `EXPLAIN QUERY PLAN` output can't show the
+distinction this post is built around. Measure the difference directly:
+run the same aggregation query against a large (multi-million row) table
+with and without a columnstore index on a real SQL Server instance, and
+compare elapsed time and logical reads.
+
+<Related>
+- [Filtered indexes](/blog/filtered-indexes) — a different specialized index, built for a different reason (a smaller slice, not a different layout).
+- [Scalar UDFs in T-SQL](/blog/scalar-udf-performance) — where batch mode vs. row mode first comes up, for a different (RBAR) reason.
+- [Reading a SQL Server execution plan](/blog/reading-a-sql-server-execution-plan) — spotting whether an operator actually ran in batch mode.
+</Related>
