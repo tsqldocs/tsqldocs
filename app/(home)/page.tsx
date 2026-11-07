@@ -9,6 +9,7 @@ import {
   MapIcon,
   PencilRulerIcon,
   PlayIcon,
+  ScanSearchIcon,
   SparklesIcon,
   StethoscopeIcon,
   TerminalIcon,
@@ -88,6 +89,12 @@ const sections = [
     title: 'Type precedence checker',
     text: "Pick two T-SQL types and see which one wins — straight from Microsoft's own table, with the index-killing cases flagged.",
     href: '/tools/type-precedence',
+  },
+  {
+    icon: ScanSearchIcon,
+    title: 'Execution plan explainer',
+    text: 'Paste a plan’s XML and get Key Lookups, Spools, and missing-index suggestions flagged in plain English, right in your browser.',
+    href: '/tools/execution-plan-explainer',
   },
 ];
 

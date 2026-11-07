@@ -15,6 +15,7 @@ export function baseOptions(): BaseLayoutProps {
       { type: 'main', url: '/docs/playground', text: 'Playground' },
       { type: 'main', url: '/fix', text: 'Query Doctor' },
       { type: 'main', url: '/tools/type-precedence', text: 'Type Precedence' },
+      { type: 'main', url: '/tools/execution-plan-explainer', text: 'Plan Explainer' },
       { type: 'main', url: '/blog', text: 'Blog' },
     ],
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
